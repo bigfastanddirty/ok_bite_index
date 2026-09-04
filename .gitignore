@@ -1,0 +1,28 @@
+# Active environment credentials
+.env
+*.env
+!.env.example
+
+# Database cluster data and configuration files
+base/
+global/
+data/
+postgres_data/
+pg_*
+*.conf
+*.opts
+PG_VERSION
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# System & editor artifacts
+.DS_Store
+*.swp
+.vscode/
+.idea/

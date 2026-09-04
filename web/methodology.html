@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoring Methodology | OK Bite Index</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <a href="/" class="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shadow-inner hover:border-slate-700 transition">
+                    <svg viewBox="0 0 100 58" class="w-8 h-5 text-sky-400 fill-sky-400/20 stroke-sky-400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 2.0 2.0 L 95.8 2.0 L 95.8 9.9 L 97.7 27.4 L 97.7 55.4 L 91.3 52.8 L 82.4 51.2 L 71.2 54.4 L 65.6 55.7 L 57.8 49.6 L 48.9 48.1 L 42.2 43.3 L 35.5 40.9 L 35.5 9.9 L 2.0 9.9 Z" />
+                    </svg>
+                </a>
+                <div>
+                    <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">Scoring Methodology</h1>
+                    <p class="text-[11px] text-slate-400">Limnological & Atmospheric Bite Index Architecture</p>
+                </div>
+            </div>
+            <a href="/" class="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+                &larr; Back to Dashboard
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+
+        <!-- 1. Scoring Breakdown Matrix -->
+        <section class="space-y-6">
+            <h2 class="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-400">
+                Algorithm Weighting & Limnological Hierarchy
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- 1. Barometric Rate of Change -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider">Weight: 30%</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">Max +/- 18 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">1. Barometric Rate of Change (&Delta;P 3h)</h3>
+                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                        Fish swim bladders are direct hydrostatic pressure sensors. Rather than scoring static pressure, the algorithm evaluates the 3-hour smoothed trend (&Delta;P/&Delta;t):
+                    </p>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">&Delta;P &le; -1.8 hPa:</span> Strong pre-frontal feeding surge (+18 pts)</li>
+                        <li>&bull; <span class="text-cyan-400">&Delta;P -0.8 to +0.4 hPa:</span> Steady / stable pressure (+4 pts)</li>
+                        <li>&bull; <span class="text-rose-400">&Delta;P &ge; +1.5 hPa:</span> Post-frontal lockjaw / bottom staging (-16 pts)</li>
+                    </ul>
+                </div>
+
+                <!-- 2. Reservoir Hydrodynamics -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Weight: 25%</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Max -10 to +16 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">2. Dam Generation & Hydrodynamics</h3>
+                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                        USACE dam releases create predatory current breaks along main-lake points, bridges, and secondary creek channels:
+                    </p>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">Release &gt; 6,000 CFS:</span> Heavy ambush current (+16 pts)</li>
+                        <li>&bull; <span class="text-cyan-400">Release 1,500 - 6,000 CFS:</span> Active feeding current (+10 pts)</li>
+                        <li>&bull; <span class="text-rose-400">0 CFS &amp; Pool Drawdown:</span> Stagnant / falling pool (-10 pts)</li>
+                    </ul>
+                </div>
+
+                <!-- 3. Water Temperature & Metabolism -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Weight: 20%</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Max -14 to +12 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">3. Water Temperature &amp; Metabolism</h3>
+                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                        Evaluates seasonal metabolic efficiency and spawn phases across warm-water and cool-water species:
+                    </p>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">62&deg;F - 76&deg;F:</span> Peak metabolic feeding &amp; spawn (+12 pts)</li>
+                        <li>&bull; <span class="text-cyan-400">54&deg;F - 62&deg;F:</span> Pre-spawn staging (+6 pts)</li>
+                        <li>&bull; <span class="text-rose-400">&gt; 88&deg;F or &lt; 45&deg;F:</span> Thermal stress / winter torpor (-14 pts)</li>
+                    </ul>
+                </div>
+
+                <!-- 4. Cloud Cover & Wind Structure -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Weight: 15%</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">Max -10 to +10 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">4. Light Attenuation &amp; Wind Chop</h3>
+                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                        Predator fish lack adjustable irises. Moderate wind chop and dense cloud cover break up surface light:
+                    </p>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">Overcast &ge; 70% &amp; Wind 7-16 mph:</span> Roaming predators (+11 pts)</li>
+                        <li>&bull; <span class="text-rose-400">Bluebird Sky &amp; 0 mph Wind:</span> Spooky / buried in cover (-7 pts)</li>
+                        <li>&bull; <span class="text-rose-400">Wind &gt; 25 mph:</span> Dangerous / blown out (-8 pts)</li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 2. Water Temperature Estimation Engine Section -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Estimated Water Temperature & Limnological Thermal Decay Model</h2>
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Not every USACE reservoir or USGS gauge station maintains an active in-situ sub-surface thermistor year-round. When physical temperature telemetry is offline, OK Bite Index activates an automated <strong>Thermal Decay &amp; Thermal Inertia Model</strong>:
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-cyan-400 font-mono">1. Exponential Moving Average (EMA)</span>
+                    <p class="text-xs text-slate-400">Calculates a 7-to-10-day weighted moving average of ambient air temperatures to capture lake thermal lag and heat capacity.</p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-sky-400 font-mono">2. Solar Radiation &amp; Inflow Modifiers</span>
+                    <p class="text-xs text-slate-400">Factors shortwave solar radiation (W/m²), cloud cover opacity, and major cold runoff inflows from upstream tributaries.</p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-emerald-400 font-mono">3. Reservoir Mean Depth Damping</span>
+                    <p class="text-xs text-slate-400">Applies reservoir-specific thermal damping coefficients based on mean pool depth (e.g., deep lakes like Tenkiller vs. shallow lakes like Canton).</p>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-500 italic pt-1">
+                *Whenever physical telemetry is reporting live, the estimated model is automatically bypassed in favor of raw sensor readings.
+            </p>
+        </section>
+
+        <!-- 3. Dissolved Oxygen Estimation Engine Section -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Dissolved Oxygen (O₂) Saturation &amp; Limnological Estimation</h2>
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Most freshwater reservoirs lack continuous electrochemical optical dissolved oxygen probes in shallow surface bays. When in-situ USGS DO telemetry is offline, OK Bite Index calculates theoretical surface DO saturation (mg/L) derived from the Henry's Law water-temperature solubility relationship:
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-emerald-400 font-mono">1. Temperature-Dependent Solubility</span>
+                    <p class="text-xs text-slate-400">Cold water holds substantially higher dissolved oxygen concentrations (DO ≈ 14.6 - 0.1 × Water Temp °F). As surface water warms above 80°F, saturation thresholds naturally decay toward 6.0–7.0 mg/L.</p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-cyan-400 font-mono">2. Wind Aeration &amp; Inflow Dynamics</span>
+                    <p class="text-xs text-slate-400">Surface mechanical agitation from sustained wind (&gt;8 mph) and high-volume spillway/tailrace flows increase atmospheric re-aeration across upper epilimnion layers.</p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <span class="text-xs font-bold text-rose-400 font-mono">3. Hypolimnetic Anoxia Suppression</span>
+                    <p class="text-xs text-slate-400">Identifies summer thermal stratification cutoff points (thermoclines) where deep bottom basins drop below 3.0 mg/L, concentrating active predators into shallow oxygen-rich margins.</p>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-500 italic pt-1">
+                *When active USGS optical DO sensors report live telemetry (e.g., Lake Arcadia or Skiatook), estimated values are bypassed and flagged as raw physical readings.
+            </p>
+        </section>
+
+        <!-- 4. Data Sources Section -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-800/60">
+                <h2 class="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-400">
+                    Live Data Ingestion Sources
+                </h2>
+                <span class="text-[10px] text-slate-500 font-mono">Click to visit official portals</span>
+            </div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <!-- USACE Link Card -->
+                <a href="https://water.usace.army.mil/overview/swt" target="_blank" rel="noopener noreferrer" class="group bg-slate-950 p-4 rounded-xl border border-slate-800/80 hover:border-sky-500/50 hover:bg-slate-950/90 transition shadow-sm flex flex-col justify-between space-y-2">
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-sky-400 font-mono group-hover:text-sky-300 transition">USACE Tulsa District</span>
+                            <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-sky-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Dam release (CFS), reservoir pool elevations, flood control stages, and tailrace flow rates.</p>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-500 group-hover:text-slate-400">water.usace.army.mil/overview/swt &rarr;</span>
+                </a>
+
+                <!-- USGS Link Card -->
+                <a href="https://waterservices.usgs.gov/" target="_blank" rel="noopener noreferrer" class="group bg-slate-950 p-4 rounded-xl border border-slate-800/80 hover:border-emerald-500/50 hover:bg-slate-950/90 transition shadow-sm flex flex-col justify-between space-y-2">
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-emerald-400 font-mono group-hover:text-emerald-300 transition">USGS Water Services</span>
+                            <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-emerald-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Turbidity (FNU), dissolved oxygen (mg/L), in-situ water temperature, and stream gauge telemetry.</p>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-500 group-hover:text-slate-400">waterservices.usgs.gov &rarr;</span>
+                </a>
+
+                <!-- Open-Meteo Link Card -->
+                <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" class="group bg-slate-950 p-4 rounded-xl border border-slate-800/80 hover:border-purple-500/50 hover:bg-slate-950/90 transition shadow-sm flex flex-col justify-between space-y-2">
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-purple-400 font-mono group-hover:text-purple-300 transition">Open-Meteo & NOAA</span>
+                            <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-purple-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">Hourly surface barometric pressure curves, wind gusts, cloud cover, UV index, and precipitation.</p>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-500 group-hover:text-slate-400">open-meteo.com &rarr;</span>
+                </a>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 py-6 text-center text-xs text-slate-600 font-mono">
+        OK Bite Index &bull; Telemetry-Driven Freshwater Limnology
+    </footer>
+
+</body>
+</html>
