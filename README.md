@@ -1,6 +1,6 @@
-# ok_bite_index
+# OK Bite Index
 
-Oklahoma lake telemetry and solunar bite-scoring platform for 27 state reservoirs.
+Oklahoma lake telemetry and solunar bite-scoring platform
 
 ## Prerequisites & Documentation
 - [Install Docker Engine](https://docs.docker.com/engine/install/)
