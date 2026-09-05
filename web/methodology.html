@@ -31,86 +31,266 @@
     <!-- Main Content -->
     <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
 
-        <!-- 1. Scoring Breakdown Matrix -->
+        <!-- 1. Live Bite Score Methodology -->
         <section class="space-y-6">
-            <h2 class="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-400">
-                Algorithm Weighting & Limnological Hierarchy
-            </h2>
+            <div class="space-y-2">
+                <h2 class="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-400">
+                    Live Bite Score Architecture
+                </h2>
+                <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                    The Bite Index begins at a <strong class="text-slate-200">35-point baseline</strong>, then adds or subtracts
+                    condition-specific modifiers. The final result is clamped to <strong class="text-slate-200">5–100</strong>.
+                    The dashboard's expandable <span class="text-sky-400 font-semibold">Why this score?</span> panel exposes these
+                    same live contributions for the selected lake.
+                </p>
+            </div>
+
+            <!-- Rating bands -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-slate-900 border border-emerald-500/20 rounded-xl p-4">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500">80–100</div>
+                    <div class="font-black text-emerald-300 mt-1">EPIC</div>
+                </div>
+                <div class="bg-slate-900 border border-emerald-500/20 rounded-xl p-4">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500">65–79</div>
+                    <div class="font-black text-emerald-400 mt-1">GOOD</div>
+                </div>
+                <div class="bg-slate-900 border border-amber-500/20 rounded-xl p-4">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500">45–64</div>
+                    <div class="font-black text-amber-400 mt-1">FAIR</div>
+                </div>
+                <div class="bg-slate-900 border border-rose-500/20 rounded-xl p-4">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-500">5–44</div>
+                    <div class="font-black text-rose-400 mt-1">TOUGH</div>
+                </div>
+            </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                <!-- 1. Barometric Rate of Change -->
+                <!-- Pressure -->
                 <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider">Weight: 30%</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">Max +/- 18 pts</span>
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider">Pressure Trend</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">-22 to +25 pts</span>
                     </div>
-                    <h3 class="font-bold text-base text-white">1. Barometric Rate of Change (&Delta;P 3h)</h3>
+                    <h3 class="font-bold text-base text-white">1. Barometric Rate of Change</h3>
                     <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                        Fish swim bladders are direct hydrostatic pressure sensors. Rather than scoring static pressure, the algorithm evaluates the 3-hour smoothed trend (&Delta;P/&Delta;t):
+                        The model scores the pressure trend rather than raw pressure alone.
                     </p>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
-                        <li>&bull; <span class="text-emerald-400">&Delta;P &le; -1.8 hPa:</span> Strong pre-frontal feeding surge (+18 pts)</li>
-                        <li>&bull; <span class="text-cyan-400">&Delta;P -0.8 to +0.4 hPa:</span> Steady / stable pressure (+4 pts)</li>
-                        <li>&bull; <span class="text-rose-400">&Delta;P &ge; +1.5 hPa:</span> Post-frontal lockjaw / bottom staging (-16 pts)</li>
+                        <li>&bull; <span class="text-emerald-400">&Delta;P &le; -1.2 hPa:</span> +25</li>
+                        <li>&bull; <span class="text-emerald-400">-1.2 &lt; &Delta;P &le; -0.4:</span> +15</li>
+                        <li>&bull; <span class="text-cyan-400">-0.4 &lt; &Delta;P &lt; +0.6:</span> +4</li>
+                        <li>&bull; <span class="text-rose-400">+0.6 to &lt; +1.8:</span> -10</li>
+                        <li>&bull; <span class="text-rose-400">&Delta;P &ge; +1.8 hPa:</span> -22</li>
                     </ul>
                 </div>
 
-                <!-- 2. Reservoir Hydrodynamics -->
+                <!-- Wind -->
                 <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Weight: 25%</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Max -10 to +16 pts</span>
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-sky-400 uppercase tracking-wider">Wind Chop</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">-14 to +12 pts</span>
                     </div>
-                    <h3 class="font-bold text-base text-white">2. Dam Generation & Hydrodynamics</h3>
-                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                        USACE dam releases create predatory current breaks along main-lake points, bridges, and secondary creek channels:
-                    </p>
+                    <h3 class="font-bold text-base text-white">2. Wind Speed</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
-                        <li>&bull; <span class="text-emerald-400">Release &gt; 6,000 CFS:</span> Heavy ambush current (+16 pts)</li>
-                        <li>&bull; <span class="text-cyan-400">Release 1,500 - 6,000 CFS:</span> Active feeding current (+10 pts)</li>
-                        <li>&bull; <span class="text-rose-400">0 CFS &amp; Pool Drawdown:</span> Stagnant / falling pool (-10 pts)</li>
+                        <li>&bull; <span class="text-emerald-400">5–13 mph:</span> +12</li>
+                        <li>&bull; <span class="text-cyan-400">&gt;13–18 mph:</span> +6</li>
+                        <li>&bull; <span class="text-rose-400">&lt;4 mph:</span> -8</li>
+                        <li>&bull; <span class="text-rose-400">Other / stronger wind:</span> -14</li>
+                    </ul>
+                    <p class="text-xs text-slate-500">
+                        Moderate chop is favored because it reduces surface visibility and can concentrate forage.
+                    </p>
+                </div>
+
+                <!-- Clouds -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">Cloud Cover</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-500/10 text-slate-300 border border-slate-500/20">-4 to +8 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">3. Light Attenuation</h3>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">&ge;65% cloud:</span> +8</li>
+                        <li>&bull; <span class="text-cyan-400">16–64% cloud:</span> 0</li>
+                        <li>&bull; <span class="text-rose-400">&le;15% cloud:</span> -4</li>
                     </ul>
                 </div>
 
-                <!-- 3. Water Temperature & Metabolism -->
+                <!-- Time of day -->
                 <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Weight: 20%</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">Max -14 to +12 pts</span>
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Time of Day</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">-10 to +15 pts</span>
                     </div>
-                    <h3 class="font-bold text-base text-white">3. Water Temperature &amp; Metabolism</h3>
+                    <h3 class="font-bold text-base text-white">4. Diurnal Feeding Window</h3>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; <span class="text-emerald-400">5:30–8:30 AM:</span> +15</li>
+                        <li>&bull; <span class="text-emerald-400">6:30–9:00 PM:</span> +15</li>
+                        <li>&bull; <span class="text-rose-400">11:00 AM–3:30 PM:</span> -10</li>
+                        <li>&bull; <span class="text-cyan-400">10:00 PM–4:30 AM:</span> +5</li>
+                        <li>&bull; Other periods: 0</li>
+                    </ul>
+                    <p class="text-xs text-slate-500">Current implementation evaluates Central Daylight Time.</p>
+                </div>
+
+                <!-- Solunar -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-indigo-400 uppercase tracking-wider">Solunar</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">0 to +22 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">5. Lunar Transit &amp; Phase</h3>
                     <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                        Evaluates seasonal metabolic efficiency and spawn phases across warm-water and cool-water species:
+                        Major and minor lunar windows are calculated from approximate lunar longitude and local sidereal time.
+                        A moon-phase proximity bonus may be added near major lunar phases.
                     </p>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
-                        <li>&bull; <span class="text-emerald-400">62&deg;F - 76&deg;F:</span> Peak metabolic feeding &amp; spawn (+12 pts)</li>
-                        <li>&bull; <span class="text-cyan-400">54&deg;F - 62&deg;F:</span> Pre-spawn staging (+6 pts)</li>
-                        <li>&bull; <span class="text-rose-400">&gt; 88&deg;F or &lt; 45&deg;F:</span> Thermal stress / winter torpor (-14 pts)</li>
+                        <li>&bull; Major transit window: up to +16</li>
+                        <li>&bull; Minor transit window: up to +10</li>
+                        <li>&bull; Lunar phase proximity bonus: +3 or +6</li>
                     </ul>
                 </div>
 
-                <!-- 4. Cloud Cover & Wind Structure -->
+                <!-- Water temp -->
                 <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Weight: 15%</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">Max -10 to +10 pts</span>
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Water Temperature</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">-15 to +15 pts</span>
                     </div>
-                    <h3 class="font-bold text-base text-white">4. Light Attenuation &amp; Wind Chop</h3>
-                    <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                        Predator fish lack adjustable irises. Moderate wind chop and dense cloud cover break up surface light:
-                    </p>
+                    <h3 class="font-bold text-base text-white">6. Metabolic Temperature Factor</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
-                        <li>&bull; <span class="text-emerald-400">Overcast &ge; 70% &amp; Wind 7-16 mph:</span> Roaming predators (+11 pts)</li>
-                        <li>&bull; <span class="text-rose-400">Bluebird Sky &amp; 0 mph Wind:</span> Spooky / buried in cover (-7 pts)</li>
-                        <li>&bull; <span class="text-rose-400">Wind &gt; 25 mph:</span> Dangerous / blown out (-8 pts)</li>
+                        <li>&bull; <span class="text-emerald-400">62–76&deg;F:</span> +15</li>
+                        <li>&bull; <span class="text-cyan-400">54–&lt;62&deg;F:</span> +8</li>
+                        <li>&bull; <span class="text-cyan-400">&gt;76–83&deg;F:</span> +7</li>
+                        <li>&bull; <span class="text-amber-400">46–&lt;54&deg;F:</span> -4</li>
+                        <li>&bull; <span class="text-rose-400">&gt;83–88&deg;F:</span> -8</li>
+                        <li>&bull; <span class="text-rose-400">Outside these ranges:</span> -15</li>
+                    </ul>
+                    <p class="text-xs text-slate-500">
+                        When measured water temperature is unavailable, the site's estimated value is used and flagged in the dashboard.
+                    </p>
+                </div>
+
+                <!-- Hydrology -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Hydrology</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">-6 to +9 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">7–8. Dam Flow &amp; Pool Movement</h3>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; Release &gt;100 CFS: <span class="text-emerald-400">+5</span></li>
+                        <li>&bull; 24h level rise +0.10 to +0.50 ft: <span class="text-emerald-400">+4</span></li>
+                        <li>&bull; 24h level drop &lt;-0.30 ft: <span class="text-rose-400">-6</span></li>
                     </ul>
                 </div>
 
+                <!-- Precip -->
+                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="text-xs font-bold font-mono text-blue-400 uppercase tracking-wider">Precipitation</span>
+                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">-12 to +7 pts</span>
+                    </div>
+                    <h3 class="font-bold text-base text-white">9. Rain / Runoff Modifier</h3>
+                    <ul class="text-xs font-mono space-y-1 text-slate-300">
+                        <li>&bull; 0.05–0.40 in: <span class="text-emerald-400">+7</span></li>
+                        <li>&bull; &gt;0.40–0.80 in: <span class="text-cyan-400">+3</span></li>
+                        <li>&bull; &gt;1.20 in: <span class="text-rose-400">-12</span></li>
+                        <li>&bull; Other amounts: 0</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <h3 class="font-bold text-base text-white">Score Assembly</h3>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300 overflow-x-auto">
+                    Final Bite Score = clamp(35 + Pressure + Wind + Clouds + Time + Solunar + Water Temp + Flow + Pool Trend + Rain, 5, 100)
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    The factors are additive modifiers, not percentage weights. A strong positive condition can offset a negative condition,
+                    while the final clamp prevents scores below 5 or above 100.
+                </p>
             </div>
         </section>
 
-        <!-- 2. Water Temperature Estimation Engine Section -->
+        <!-- Target Species Ranking -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-5">
+            <div>
+                <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Target Species Ranking</h2>
+                <p class="text-xs sm:text-sm text-slate-400 leading-relaxed mt-2">
+                    Target-species selection is a <strong class="text-slate-200">separate scoring system</strong> from the 0–100 Bite Index.
+                    The candidate list comes from ODWC's <em>Fish Species of Interest</em> for each lake. The model never introduces a target
+                    that is not in that lake's stored ODWC species list.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                    <span class="text-xs font-bold text-sky-400 font-mono">1. 50-Point Baseline</span>
+                    <p class="text-xs text-slate-400 mt-1.5">
+                        Every ODWC-listed species begins at 50 before current conditions are evaluated.
+                    </p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                    <span class="text-xs font-bold text-emerald-400 font-mono">2. Species-Specific Modifiers</span>
+                    <p class="text-xs text-slate-400 mt-1.5">
+                        Water temperature, pool level/trend, current, pressure, wind, clouds, rain, and season add or subtract points according to species behavior.
+                    </p>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                    <span class="text-xs font-bold text-amber-400 font-mono">3. Top Three Targets</span>
+                    <p class="text-xs text-slate-400 mt-1.5">
+                        Scores are capped at 0–100, sorted highest-first, and the top three become the current Primary Target Species.
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-2">
+                    <span class="text-xs font-bold text-slate-200">Examples of condition matching</span>
+                    <ul class="text-xs text-slate-400 space-y-1.5">
+                        <li>&bull; Largemouth Bass: warm water, elevated/rising pool, moderate wind, falling pressure, cloud cover.</li>
+                        <li>&bull; Crappie: 52–72&deg;F preferred, stable pool, manageable wind, spring/fall timing.</li>
+                        <li>&bull; Blue Catfish: warm water, active current, elevated/rising water, rainfall/runoff.</li>
+                        <li>&bull; White / Striped / Hybrid Bass: bait-concentrating wind and current, favorable temperature, falling pressure.</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-2">
+                    <span class="text-xs font-bold text-slate-200">Additional species profiles</span>
+                    <ul class="text-xs text-slate-400 space-y-1.5">
+                        <li>&bull; Walleye / Saugeye / Sauger: cooler water, wind, low light, cool-season timing.</li>
+                        <li>&bull; Channel Catfish: warm water, rainfall, inflow, elevated pool, warm-season timing.</li>
+                        <li>&bull; Flathead Catfish: warm water, current edges, low light, warm-season timing.</li>
+                        <li>&bull; Smallmouth / Spotted Bass: moderate temperatures, wind, structure, current and seasonal movement.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-500 italic">
+                Species scores are tactical confidence rankings, not population estimates or guarantees of catch success.
+            </p>
+        </section>
+
+        <!-- Seasonal Phase -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Seasonal Phase Classification</h2>
+            <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                Seasonal phase is used as tactical context. Water temperature is the primary biological signal, while calendar month constrains spawn and fall-transition phases.
+                Estimated water temperature is used when measured telemetry is unavailable.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-sky-400">&lt;50&deg;F</span><br><span class="text-slate-400">Winter Torpor / Staging</span></div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-cyan-400">50–&lt;60&deg;F · Feb–Apr</span><br><span class="text-slate-400">Pre-Spawn Movement</span></div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-emerald-400">60–72&deg;F · Mar–May</span><br><span class="text-slate-400">Active Spawn / Bedding</span></div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-amber-400">&gt;72–&lt;78&deg;F · May–Jun</span><br><span class="text-slate-400">Post-Spawn Recovery</span></div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-rose-400">&ge;80&deg;F</span><br><span class="text-slate-400">Summer Thermal Refuge</span></div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800"><span class="font-bold text-orange-400">60–&lt;80&deg;F · Sep–Nov</span><br><span class="text-slate-400">Fall Forage Push</span></div>
+            </div>
+        </section>
+
+        <!-- Water Temperature Estimation Engine Section -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
             <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Estimated Water Temperature & Limnological Thermal Decay Model</h2>
             <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
@@ -137,7 +317,7 @@
             </p>
         </section>
 
-        <!-- 3. Dissolved Oxygen Estimation Engine Section -->
+        <!-- Dissolved Oxygen Estimation Engine Section -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
             <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Dissolved Oxygen (O₂) Saturation &amp; Limnological Estimation</h2>
             <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
@@ -164,7 +344,7 @@
             </p>
         </section>
 
-        <!-- 4. Data Sources Section -->
+        <!-- Data Sources Section -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
             <div class="flex items-center justify-between pb-2 border-b border-slate-800/60">
                 <h2 class="text-base sm:text-lg font-bold uppercase tracking-wider text-slate-400">
