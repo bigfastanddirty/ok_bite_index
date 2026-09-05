@@ -787,32 +787,69 @@ function updateOverviewUI(data) {
             if (targetSp) {
                 const sp = data.target_species || [];
                 const ranking = Array.isArray(data.species_ranking) ? data.species_ranking : [];
-                const scoreMap = new Map(ranking.map(x => [x.species, x.score]));
+                const rankingMap = new Map(ranking.map(x => [x.species, x]));
 
                 if (Array.isArray(sp) && sp.length > 0) {
                     targetSp.innerHTML = sp.map(species => {
                         const url = (typeof getSpeciesUrl === 'function')
                             ? getSpeciesUrl(species)
                             : 'https://www.wildlifedepartment.com/fishing/resources';
-                        const confidence = scoreMap.has(species) ? Math.round(Number(scoreMap.get(species))) : null;
+
+                        const rankingEntry = rankingMap.get(species);
+                        const confidence = rankingEntry
+                            ? Math.round(Number(rankingEntry.score || 0))
+                            : null;
+
+                        const reasons = rankingEntry && Array.isArray(rankingEntry.reasons)
+                            ? rankingEntry.reasons
+                            : [];
+
                         const display = formatSpeciesDisplay(species);
 
+                        const tooltipReasons = reasons.length
+                            ? reasons.map(reason => `
+                                <div class="flex gap-2">
+                                    <span class="text-sky-400">•</span>
+                                    <span>${reason}</span>
+                                </div>
+                              `).join('')
+                            : '<div class="text-slate-500">No condition details available.</div>';
+
                         return `
-                            <a href="${url}"
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               title="ODWC fishing information for ${display}"
-                               class="inline-flex items-center gap-1.5 px-2 py-1 mr-1 mb-1 rounded-md
-                                      bg-sky-500/10 border border-sky-500/20 text-sky-300
-                                      hover:text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/40
-                                      text-xs font-semibold transition">
-                                <span>${display}</span>
-                                ${confidence !== null ? `<span class="text-[9px] font-mono text-sky-500">${confidence}</span>` : ''}
-                                <svg class="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                          d="M14 4h6m0 0v6m0-6L10 14M5 10v9a1 1 0 001 1h9a1 1 0 001-1v-5"/>
-                                </svg>
-                            </a>
+                            <span class="relative inline-block group mr-1 mb-1">
+                                <a href="${url}"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md
+                                          bg-sky-500/10 border border-sky-500/20 text-sky-300
+                                          hover:text-sky-200 hover:bg-sky-500/20 hover:border-sky-400/40
+                                          text-xs font-semibold transition">
+                                    <span>${display}</span>
+                                    ${confidence !== null ? `<span class="text-[9px] font-mono text-sky-500">${confidence}</span>` : ''}
+                                    <svg class="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M14 4h6m0 0v6m0-6L10 14M5 10v9a1 1 0 001 1h9a1 1 0 001-1v-5"/>
+                                    </svg>
+                                </a>
+
+                                <div class="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden
+                                            w-72 max-w-[80vw] rounded-xl border border-slate-700
+                                            bg-slate-950/95 p-3 shadow-2xl backdrop-blur
+                                            group-hover:block">
+                                    <div class="flex items-center justify-between gap-3 mb-2">
+                                        <span class="text-xs font-bold text-white">${display}</span>
+                                        ${confidence !== null ? `
+                                            <span class="text-[10px] font-mono font-bold text-sky-400">
+                                                ${confidence}/100
+                                            </span>
+                                        ` : ''}
+                                    </div>
+
+                                    <div class="space-y-1.5 text-[10px] leading-relaxed text-slate-300">
+                                        ${tooltipReasons}
+                                    </div>
+                                </div>
+                            </span>
                         `;
                     }).join('');
                 } else {
