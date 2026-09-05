@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OK Bite Index | Oklahoma Lake Telemetry</title>
@@ -48,10 +49,138 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-500 selection:text-white">
 
+    
+    <!-- Sidebar Backdrop Overlay -->
+    <div id="sidebarBackdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden transition-opacity"></div>
+
+            <!-- Slide-over Sidebar -->
+    <aside id="resourceSidebar" class="fixed inset-y-0 left-0 w-80 max-w-[85vw] bg-slate-900 border-r border-slate-800 z-50 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between shadow-2xl">
+        <div class="p-5 space-y-6 overflow-y-auto">
+            <!-- Header Bar -->
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <span class="font-bold text-sm text-white uppercase tracking-wider">Resources &amp; Maps</span>
+                <button onclick="toggleSidebar()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- 1. Lake Specific Fishing Regulations Section (TOP) -->
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Lake Regulations</h3>
+                    <span id="sidebarRegsBadge" class="text-[9px] font-mono font-bold px-2 py-0.5 rounded border border-slate-800 bg-slate-950 text-slate-400">STATEWIDE</span>
+                </div>
+                
+                <div class="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/90 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span id="sidebarLakeName" class="text-xs font-bold text-white truncate">Selected Lake</span>
+                        <a id="sidebarOdwcLink" href="https://www.wildlifedepartment.com/fishing/wheretofish" target="_blank" rel="noopener noreferrer" class="text-[10px] text-sky-400 hover:text-sky-300 font-medium inline-flex items-center gap-0.5">
+                            ODWC Guide
+                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </a>
+                    </div>
+                    <div id="sidebarRegsContent" class="text-xs text-slate-300 leading-relaxed font-sans whitespace-pre-line max-h-48 overflow-y-auto pr-1 forecast-scroll">
+                        Loading lake regulations...
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. External Mapping & Data Links -->
+            <div class="space-y-3 pt-4 border-t border-slate-800">
+                <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400">External Mapping &amp; Data</h3>
+
+                <a href="https://experience.arcgis.com/experience/5ed6dca9c208436fb5b01db5caa9b909/page/Page" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-sky-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-sky-300 transition truncate">ODWC Attractor Map</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Official brush piles, spider blocks &amp; fish habitat structures.</p>
+                    </div>
+                </a>
+
+                <a href="https://www.wildlifedepartment.com/fishing/wheretofish" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-sky-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-emerald-300 transition truncate">ODWC Where to Fish</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Species surveys, lake regulations, and boat ramp guides.</p>
+                    </div>
+                </a>
+
+                <a href="https://www.wildlifedepartment.com/fishing/regs" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-amber-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-amber-300 transition truncate">ODWC Fishing Regulations</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Statewide limits, license info, and legal harvest rules.</p>
+                    </div>
+                </a>
+
+                <a href="https://www.wildlifedepartment.com/fishing/resources/species" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-cyan-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-cyan-300 transition truncate">Oklahoma Fish Species</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Species identification guides, habitat info, and state records.</p>
+                    </div>
+                </a>
+
+                <a href="https://www.wildlifedepartment.com/research-surveys/fishing" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-purple-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-purple-300 transition truncate">Fisheries Research &amp; Surveys</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Electrofishing reports, netting surveys, and stocking densities.</p>
+                    </div>
+                </a>
+
+                <a href="https://www.swt-wc.usace.army.mil/" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-sky-500/50 hover:bg-slate-850 transition">
+                    <div class="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex-shrink-0 group-hover:scale-105 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs font-semibold text-white group-hover:text-indigo-300 transition truncate">USACE Tulsa District</span>
+                            <svg class="w-3 h-3 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5 leading-snug">Official dam releases, pool elevations, and reservoir reports.</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+        <div class="p-4 border-t border-slate-800 text-[10px] text-slate-500 font-mono text-center">
+            OK BITE INDEX TELEMETRY
+        </div>
+    </aside>
+
     <!-- Header -->
     <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
             <!-- Left Branding -->
+            <button onclick="toggleSidebar()" title="Open resources & links" class="p-1.5 sm:p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition flex-shrink-0">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+
             <a href="/" class="flex items-center space-x-2 flex-shrink-0 group">
                 <div class="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center flex-shrink-0 shadow-inner group-hover:border-slate-700 transition">
                     <svg viewBox="0 0 100 58" class="w-6 h-3.5 sm:w-8 sm:h-5 text-sky-400 fill-sky-400/20 stroke-sky-400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
@@ -354,6 +483,65 @@
 
         function updateOverviewUI(data) {
             if (!data) return;
+
+            // Render Lake Regulations in Sidebar
+            try {
+                const sName = document.getElementById("sidebarLakeName");
+                const sContent = document.getElementById("sidebarRegsContent");
+                const sBadge = document.getElementById("sidebarRegsBadge");
+                const sLink = document.getElementById("sidebarOdwcLink");
+
+                const lakeName = data.lake_name || data.name || (document.getElementById("lakeSelect") ? document.getElementById("lakeSelect").selectedOptions[0]?.text : "") || currentLake;
+                if (sName) sName.textContent = lakeName;
+
+                let regs = data.special_regulations || "Statewide general limits apply (no special area restrictions listed).";
+                // Decode HTML entities and clean up non-breaking spaces
+                regs = regs.replace(/&nbsp;/gi, " ").replace(/\s{2,}/g, " ").trim();
+                if (sContent) sContent.textContent = regs;
+
+                const isStatewide = regs.includes("Statewide general limits");
+                if (sBadge) {
+                    if (isStatewide) {
+                        sBadge.textContent = "STATEWIDE";
+                        sBadge.className = "text-[9px] font-mono font-bold px-2 py-0.5 rounded border border-slate-800 bg-slate-950 text-slate-400";
+                    } else {
+                        sBadge.textContent = "SPECIAL REGS";
+                        sBadge.className = "text-[9px] font-mono font-bold px-2 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300";
+                    }
+                }
+
+                if (sLink && currentLake) {
+                    const lakeSlugs = {
+                        "HEYB": "northeast/heyburn",
+                        "HULA": "northeast/hulah",
+                        "KAWW": "northeast/kaw",
+                        "KEYW": "northeast/keystone",
+                        "TEXO": "southeast/texoma",
+                        "TBIR": "central/thunderbird",
+                        "OOLO": "northeast/oologah",
+                        "PINE": "southeast/pine-creek",
+                        "KERR": "southeast/robert-s-kerr",
+                        "SKIA": "northeast/skiatook",
+                        "TENK": "northeast/tenkiller",
+                        "WAUR": "southwest/waurika",
+                        "WIST": "southeast/wister",
+                        "ARCA": "central/arcadia",
+                        "ARBU": "southeast/arbuckle",
+                        "EUFA": "southeast/eufaula",
+                        "FTGB": "northeast/fort-gibson",
+                        "GRND": "northeast/grand",
+                        "HEFN": "central/hefner"
+                    };
+                    if (lakeSlugs[currentLake]) {
+                        sLink.href = `https://www.wildlifedepartment.com/fishing/wheretofish/${lakeSlugs[currentLake]}`;
+                    } else {
+                        sLink.href = "https://www.wildlifedepartment.com/fishing/wheretofish";
+                    }
+                }
+            } catch (err) {
+                console.error("Error rendering sidebar regulations:", err);
+            }
+
 
             const rTs = document.getElementById('readingTimestamp');
             if (rTs && data.timestamp) {
@@ -865,6 +1053,20 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadLakes();
         });
-    </script>
+    
+    function toggleSidebar() {
+        const sidebar = document.getElementById("resourceSidebar");
+        const backdrop = document.getElementById("sidebarBackdrop");
+        const isOpen = !sidebar.classList.contains("-translate-x-full");
+        if (isOpen) {
+            sidebar.classList.add("-translate-x-full");
+            backdrop.classList.add("hidden");
+        } else {
+            sidebar.classList.remove("-translate-x-full");
+            backdrop.classList.remove("hidden");
+        }
+    }
+
+</script>
 </body>
 </html>

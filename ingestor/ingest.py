@@ -1,3 +1,4 @@
+from odwc_regs import check_and_sync_odwc_regs
 import re
 
 def fetch_usace_bulletin_release(lake_code):
@@ -162,5 +163,6 @@ if __name__ == "__main__":
     print("Multi-Lake Telemetry daemon started.")
     while True:
         run_sync()
+        check_and_sync_odwc_regs()
         print("Waiting 15 minutes for next scheduled cycle...")
         time.sleep(900)

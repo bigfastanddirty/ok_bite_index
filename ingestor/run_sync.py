@@ -111,3 +111,24 @@ conn.commit()
 cur.close()
 conn.close()
 print("Multi-sensor live sync complete.")
+
+# --- ODWC Regulations Periodic Sync ---
+try:
+    import time
+    from odwc_regs import sync_odwc_regs
+    LOCK_FILE = "/tmp/odwc_regs_sync.timestamp"
+    WEEK_IN_SECONDS = 7 * 24 * 3600
+
+    should_run = True
+    if os.path.exists(LOCK_FILE):
+        with open(LOCK_FILE, "r") as lf:
+            last_run = float(lf.read().strip() or 0)
+            if time.time() - last_run < WEEK_IN_SECONDS:
+                should_run = False
+
+    if should_run:
+        sync_odwc_regs(conn)
+        with open(LOCK_FILE, "w") as lf:
+            lf.write(str(time.time()))
+except Exception as e:
+    print(f"Failed to execute ODWC regulations sync: {e}")

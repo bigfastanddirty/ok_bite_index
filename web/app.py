@@ -454,7 +454,7 @@ def get_lake_analysis(lake_code: str, response: Response):
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("SELECT name, latitude, longitude, normal_pool_ft FROM lakes WHERE lake_code = %s", (lake_code,))
+    cur.execute("SELECT name, latitude, longitude, normal_pool_ft, special_regulations FROM lakes WHERE lake_code = %s", (lake_code,))
     lake_meta = cur.fetchone() or {"latitude": 35.5, "longitude": -97.5}
 
     trend_query = """
@@ -621,6 +621,8 @@ def get_lake_analysis(lake_code: str, response: Response):
             row["analysis_commentary"] = "Stable conditions. Focus on main lake structure and depth breaks."
             row["tactical_summary"] = "Stable conditions. Focus on main lake structure and depth breaks."
 
+    if row:
+        row["special_regulations"] = (lake_meta or {}).get("special_regulations") or "Statewide general limits apply (no special area restrictions listed)."
     return row
 
 @app.get("/api/lakes/{lake_code}/forecast")
@@ -865,3 +867,12 @@ def get_methodology():
     </div>
 </body>
 </html>"""
+
+OK_FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 58"><path d="M 2.0 2.0 L 95.8 2.0 L 95.8 9.9 L 97.7 27.4 L 97.7 55.4 L 91.3 52.8 L 82.4 51.2 L 71.2 54.4 L 65.6 55.7 L 57.8 49.6 L 48.9 48.1 L 42.2 43.3 L 35.5 40.9 L 35.5 9.9 L 2.0 9.9 Z" fill="#0284c7" stroke="#38bdf8" stroke-width="3" stroke-linejoin="round"/></svg>'
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.head("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+@app.head("/favicon.svg", include_in_schema=False)
+def get_favicon():
+    return Response(content=OK_FAVICON_SVG, media_type="image/svg+xml")
