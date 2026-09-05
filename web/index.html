@@ -49,11 +49,10 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-500 selection:text-white">
 
-    
     <!-- Sidebar Backdrop Overlay -->
     <div id="sidebarBackdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden transition-opacity"></div>
 
-            <!-- Slide-over Sidebar -->
+    <!-- Slide-over Sidebar -->
     <aside id="resourceSidebar" class="fixed inset-y-0 left-0 w-80 max-w-[85vw] bg-slate-900 border-r border-slate-800 z-50 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between shadow-2xl">
         <div class="p-5 space-y-6 overflow-y-auto">
             <!-- Header Bar -->
@@ -178,8 +177,8 @@
         <div class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
             <!-- Left Branding -->
             <button onclick="toggleSidebar()" title="Open resources & links" class="p-1.5 sm:p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition flex-shrink-0">
-                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                </button>
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
 
             <a href="/" class="flex items-center space-x-2 flex-shrink-0 group">
                 <div class="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center flex-shrink-0 shadow-inner group-hover:border-slate-700 transition">
@@ -319,7 +318,7 @@
                     <div class="bg-slate-950/60 p-2 sm:p-2.5 rounded-xl border border-slate-800/80">
                         <span class="text-[9px] sm:text-[10px] font-medium text-slate-400 uppercase tracking-wider block truncate">Air / Humidity</span>
                         <span class="text-xs sm:text-sm font-bold font-mono text-slate-200 block mt-0.5 truncate">
-                            <span id="airTempVal">--°F</span> / <span id="humidityVal">--%</span>
+                            <span id="airTempVal" class="--°F">--°F</span> / <span id="humidityVal">--%</span>
                         </span>
                     </div>
                     <div class="bg-slate-950/60 p-2 sm:p-2.5 rounded-xl border border-slate-800/80">
@@ -372,8 +371,9 @@
 
             <!-- Metric Toggles -->
             <div class="flex flex-wrap gap-2 text-xs">
-                <button id="mBtn_elevation" onclick="toggleMetric('elevation')" class="px-2.5 py-1 rounded-lg border border-blue-500/50 bg-blue-500/20 text-blue-300 font-medium">Elevation</button>
+                <button id="mBtn_elevation" onclick="toggleMetric('elevation')" class="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-500 font-medium">Elevation</button>
                 <button id="mBtn_pressure" onclick="toggleMetric('pressure')" class="px-2.5 py-1 rounded-lg border border-purple-500/50 bg-purple-500/20 text-purple-300 font-medium">Pressure</button>
+                <button id="mBtn_inflow" onclick="toggleMetric('inflow')" class="px-2.5 py-1 rounded-lg border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-medium">Inflow (CFS)</button>
                 <button id="mBtn_release" onclick="toggleMetric('release')" class="px-2.5 py-1 rounded-lg border border-emerald-500/50 bg-emerald-500/20 text-emerald-300 font-medium">Outflow (CFS)</button>
                 <button id="mBtn_waterTemp" onclick="toggleMetric('waterTemp')" class="px-2.5 py-1 rounded-lg border border-cyan-500/50 bg-cyan-500/20 text-cyan-300 font-medium">Water Temp</button>
                 <button id="mBtn_clouds" onclick="toggleMetric('clouds')" class="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-500 font-medium">Cloud Cover</button>
@@ -391,9 +391,11 @@
         let currentLake = '';
         let chartDays = 7;
         let chartInstance = null;
+        let latestAnalysis = null;
         let activeMetrics = {
-            elevation: true,
+            elevation: false,
             pressure: true,
+            inflow: true,
             release: true,
             waterTemp: true,
             clouds: false
@@ -443,11 +445,10 @@
 
             const cacheBust = `_t=${Date.now()}`;
 
-            let analysisData = null;
             try {
                 const res = await fetch(`/api/lakes/${currentLake}/analysis?${cacheBust}`);
-                analysisData = await res.json();
-                updateOverviewUI(analysisData);
+                latestAnalysis = await res.json();
+                updateOverviewUI(latestAnalysis);
             } catch (e) {
                 console.error("Error loading lake analysis:", e);
             }
@@ -460,7 +461,7 @@
 
                 const humEl = document.getElementById('humidityVal');
                 if (humEl && fList.length > 0) {
-                    if (!analysisData || analysisData.relative_humidity_pct === null || analysisData.relative_humidity_pct === undefined) {
+                    if (!latestAnalysis || latestAnalysis.relative_humidity_pct === null || latestAnalysis.relative_humidity_pct === undefined) {
                         const curHum = fList[0].relative_humidity_pct;
                         if (curHum !== null && curHum !== undefined) {
                             humEl.textContent = `${Math.round(Number(curHum))}%`;
@@ -495,7 +496,6 @@
                 if (sName) sName.textContent = lakeName;
 
                 let regs = data.special_regulations || "Statewide general limits apply (no special area restrictions listed).";
-                // Decode HTML entities and clean up non-breaking spaces
                 regs = regs.replace(/&nbsp;/gi, " ").replace(/\s{2,}/g, " ").trim();
                 if (sContent) sContent.textContent = regs;
 
@@ -541,7 +541,6 @@
             } catch (err) {
                 console.error("Error rendering sidebar regulations:", err);
             }
-
 
             const rTs = document.getElementById('readingTimestamp');
             if (rTs && data.timestamp) {
@@ -896,8 +895,17 @@
             activeMetrics[metric] = !activeMetrics[metric];
             const btn = document.getElementById(`mBtn_${metric}`);
             if (btn) {
+                const colorMap = {
+                    elevation: 'blue',
+                    pressure: 'purple',
+                    inflow: 'cyan',
+                    release: 'emerald',
+                    waterTemp: 'cyan',
+                    clouds: 'slate'
+                };
+                const col = colorMap[metric] || 'blue';
                 if (activeMetrics[metric]) {
-                    btn.className = "px-2.5 py-1 rounded-lg border border-blue-500/50 bg-blue-500/20 text-blue-300 font-medium";
+                    btn.className = `px-2.5 py-1 rounded-lg border border-${col}-500/50 bg-${col}-500/20 text-${col}-300 font-medium`;
                 } else {
                     btn.className = "px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900 text-slate-500 font-medium";
                 }
@@ -923,6 +931,7 @@
 
             const datasets = [];
 
+            // 1. Lake Elevation
             if (activeMetrics.elevation) {
                 datasets.push({
                     label: 'Elevation (ft MSL)',
@@ -931,11 +940,67 @@
                     backgroundColor: 'rgba(59, 130, 246, 0.05)',
                     yAxisID: 'yElevation',
                     borderWidth: 2,
-                    tension: 0.3,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.25,
+                    fill: true
+                });
+
+                // Normal Pool Baseline
+                const normalPool = latestAnalysis && latestAnalysis.normal_pool_ft !== null && latestAnalysis.normal_pool_ft !== undefined
+                    ? Number(latestAnalysis.normal_pool_ft)
+                    : null;
+
+                if (normalPool !== null) {
+                    datasets.push({
+                        label: `Normal Pool (${normalPool.toFixed(1)} ft)`,
+                        data: history.map(() => normalPool),
+                        borderColor: '#94a3b8',
+                        borderWidth: 1.5,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false,
+                        yAxisID: 'yElevation',
+                        tension: 0
+                    });
+                }
+            }
+
+            // 2. River Inflow (CFS)
+            if (activeMetrics.inflow) {
+                datasets.push({
+                    label: 'Inflow (CFS)',
+                    data: history.map(h => (h.inflow_cfs !== null && h.inflow_cfs !== undefined) ? Number(h.inflow_cfs) : null),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'transparent',
+                    yAxisID: 'yRelease',
+                    borderWidth: 1.75,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: true,
+                    tension: 0.25
+                });
+            }
+
+            // 3. Outflow / Release (CFS)
+            if (activeMetrics.release) {
+                datasets.push({
+                    label: 'Outflow (CFS)',
+                    data: history.map(h => (h.release_cfs !== null && h.release_cfs !== undefined) ? Number(h.release_cfs) : null),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    yAxisID: 'yRelease',
+                    borderWidth: 1.75,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: true,
+                    tension: 0.25,
                     fill: true
                 });
             }
 
+            // 4. Barometric Pressure (hPa)
             if (activeMetrics.pressure) {
                 datasets.push({
                     label: 'Pressure (hPa)',
@@ -945,35 +1010,30 @@
                     yAxisID: 'yPressure',
                     borderWidth: 1.5,
                     borderDash: [4, 4],
-                    tension: 0.3
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: true,
+                    tension: 0.35
                 });
             }
 
-            if (activeMetrics.release) {
-                datasets.push({
-                    label: 'Outflow (CFS)',
-                    data: history.map(h => h.release_cfs ?? 0),
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    yAxisID: 'yRelease',
-                    borderWidth: 1.5,
-                    tension: 0.1,
-                    fill: true
-                });
-            }
-
+            // 5. Water Temperature (°F)
             if (activeMetrics.waterTemp) {
                 datasets.push({
                     label: 'Water Temp (°F)',
-                    data: history.map(h => h.water_temp_f),
+                    data: history.map(h => (h.water_temp_f !== null && h.water_temp_f !== undefined) ? Number(h.water_temp_f) : null),
                     borderColor: '#06b6d4',
                     backgroundColor: 'transparent',
                     yAxisID: 'yTemp',
                     borderWidth: 1.5,
-                    tension: 0.3
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: true,
+                    tension: 0.35
                 });
             }
 
+            // 6. Cloud Cover (%)
             if (activeMetrics.clouds) {
                 datasets.push({
                     label: 'Cloud Cover (%)',
@@ -982,6 +1042,9 @@
                     backgroundColor: 'transparent',
                     yAxisID: 'yPercent',
                     borderWidth: 1,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    spanGaps: true,
                     tension: 0.2
                 });
             }
@@ -1003,44 +1066,47 @@
                     plugins: {
                         legend: {
                             labels: { color: '#94a3b8', font: { family: 'monospace', size: 10 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const val = context.parsed.y;
+                                    if (val === null || val === undefined) return `${context.dataset.label}: N/A`;
+                                    const lbl = context.dataset.label || '';
+                                    if (lbl.includes('Elevation') || lbl.includes('Normal Pool')) return `${lbl}: ${val.toFixed(2)} ft`;
+                                    if (lbl.includes('Inflow') || lbl.includes('Outflow')) return `${lbl}: ${Math.round(val).toLocaleString()} CFS`;
+                                    if (lbl.includes('Pressure')) return `${lbl}: ${val.toFixed(1)} hPa`;
+                                    if (lbl.includes('Water Temp')) return `${lbl}: ${val.toFixed(1)}°F`;
+                                    if (lbl.includes('Cloud Cover')) return `${lbl}: ${Math.round(val)}%`;
+                                    return `${lbl}: ${val}`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
                             ticks: { color: '#64748b', maxTicksLimit: 8, font: { family: 'monospace', size: 10 } },
-                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                            grid: { color: 'rgba(51, 65, 85, 0.25)' }
                         },
                         yElevation: {
                             type: 'linear',
-                            position: 'left',
-                            display: activeMetrics.elevation,
-                            ticks: { color: '#3b82f6', font: { family: 'monospace', size: 10 } },
-                            grid: { color: 'rgba(51, 65, 85, 0.3)' }
-                        },
-                        yPressure: {
-                            type: 'linear',
-                            position: 'right',
-                            display: activeMetrics.pressure,
-                            ticks: { color: '#a855f7', font: { family: 'monospace', size: 10 } },
-                            grid: { drawOnChartArea: false }
+                            display: false
                         },
                         yRelease: {
                             type: 'linear',
-                            position: 'right',
-                            display: activeMetrics.release && !activeMetrics.pressure,
-                            ticks: { color: '#10b981', font: { family: 'monospace', size: 10 } },
-                            grid: { drawOnChartArea: false }
+                            display: false,
+                            min: 0
+                        },
+                        yPressure: {
+                            type: 'linear',
+                            display: false
                         },
                         yTemp: {
                             type: 'linear',
-                            position: 'right',
-                            display: activeMetrics.waterTemp && !activeMetrics.pressure && !activeMetrics.release,
-                            ticks: { color: '#06b6d4', font: { family: 'monospace', size: 10 } },
-                            grid: { drawOnChartArea: false }
+                            display: false
                         },
                         yPercent: {
                             type: 'linear',
-                            position: 'right',
                             display: false,
                             min: 0,
                             max: 100
@@ -1053,20 +1119,19 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadLakes();
         });
-    
-    function toggleSidebar() {
-        const sidebar = document.getElementById("resourceSidebar");
-        const backdrop = document.getElementById("sidebarBackdrop");
-        const isOpen = !sidebar.classList.contains("-translate-x-full");
-        if (isOpen) {
-            sidebar.classList.add("-translate-x-full");
-            backdrop.classList.add("hidden");
-        } else {
-            sidebar.classList.remove("-translate-x-full");
-            backdrop.classList.remove("hidden");
-        }
-    }
 
-</script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById("resourceSidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
+            const isOpen = !sidebar.classList.contains("-translate-x-full");
+            if (isOpen) {
+                sidebar.classList.add("-translate-x-full");
+                backdrop.classList.add("hidden");
+            } else {
+                sidebar.classList.remove("-translate-x-full");
+                backdrop.classList.remove("hidden");
+            }
+        }
+    </script>
 </body>
 </html>
