@@ -20,7 +20,9 @@ def fetch_usace_bulletin_release(lake_code):
     return None
 
 import os
+import sys
 import time
+import subprocess
 import requests
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -43,8 +45,140 @@ def get_db_connection():
             time.sleep(3)
     raise Exception("DB unreachable.")
 
+
+def check_and_sync_odwc_species():
+    """
+    Run the standalone ODWC species scraper once per calendar month.
+
+    Scheduler state is stored in PostgreSQL so container restarts/rebuilds
+    do not reset the monthly schedule.
+    """
+    conn = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.app_sync_state (
+                sync_name TEXT PRIMARY KEY,
+                last_run TIMESTAMPTZ NOT NULL
+            );
+        """)
+        conn.commit()
+
+        cur.execute("""
+            SELECT last_run
+            FROM public.app_sync_state
+            WHERE sync_name = 'odwc_species';
+        """)
+        row = cur.fetchone()
+
+        # First scheduler run: mark the current month complete.
+        # The species data was already populated manually in September 2026.
+        if row is None:
+            cur.execute("""
+                INSERT INTO public.app_sync_state (sync_name, last_run)
+                VALUES ('odwc_species', NOW());
+            """)
+            conn.commit()
+            cur.close()
+
+            print(
+                "[ODWC Species] Monthly scheduler initialized; "
+                "current month marked complete.",
+                flush=True
+            )
+            return
+
+        cur.execute("""
+            SELECT
+                date_trunc('month', last_run AT TIME ZONE 'America/Chicago')
+                <
+                date_trunc('month', NOW() AT TIME ZONE 'America/Chicago')
+            FROM public.app_sync_state
+            WHERE sync_name = 'odwc_species';
+        """)
+        should_run = cur.fetchone()[0]
+        cur.close()
+
+        if not should_run:
+            return
+
+        print(
+            "[ODWC Species] New calendar month detected. "
+            "Starting species synchronization...",
+            flush=True
+        )
+
+        result = subprocess.run(
+            [sys.executable, "/app/odwc_species.py"],
+            check=False
+        )
+
+        if result.returncode != 0:
+            print(
+                f"[ODWC Species] Sync failed with exit code "
+                f"{result.returncode}; last_run was NOT updated.",
+                flush=True
+            )
+            return
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO public.app_sync_state (sync_name, last_run)
+            VALUES ('odwc_species', NOW())
+            ON CONFLICT (sync_name)
+            DO UPDATE SET last_run = EXCLUDED.last_run;
+        """)
+        conn.commit()
+        cur.close()
+
+        print(
+            "[ODWC Species] Monthly synchronization completed successfully.",
+            flush=True
+        )
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print(
+            f"[ODWC Species] Monthly scheduler error: {e}",
+            flush=True
+        )
+
+    finally:
+        if conn:
+            conn.close()
+
+
+def ensure_source_status_table(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS lake_source_status (
+            lake_code TEXT NOT NULL,
+            source TEXT NOT NULL,
+            last_success TIMESTAMPTZ NOT NULL,
+            PRIMARY KEY (lake_code, source)
+        );
+    """)
+    conn.commit()
+    cur.close()
+
+
+def mark_source_success(cur, lake_code, source, when):
+    cur.execute("""
+        INSERT INTO lake_source_status (lake_code, source, last_success)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (lake_code, source)
+        DO UPDATE SET last_success = EXCLUDED.last_success;
+    """, (lake_code, source, when))
+
+
 def run_sync():
     conn = get_db_connection()
+    ensure_source_status_table(conn)
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("SELECT lake_code, name, usgs_site_id, latitude, longitude, normal_pool_ft FROM lakes;")
     lakes = cur.fetchall()
@@ -76,6 +210,8 @@ def run_sync():
             )
             w_res = requests.get(weather_url, timeout=10).json()
             w_data = w_res.get("current", {})
+            if w_data:
+                mark_source_success(cur, lake["lake_code"], "weather", now)
         except Exception as e:
             print(f"Weather error for {lake['lake_code']}: {e}")
 
@@ -95,6 +231,8 @@ def run_sync():
                 usgs_url = f"https://waterservices.usgs.gov/nwis/iv/?format=json&sites={site}&parameterCd=00065,62614,00060,00010,00300,63680,00076"
                 u_res = requests.get(usgs_url, timeout=12).json()
                 series = u_res.get("value", {}).get("timeSeries", [])
+                if series:
+                    mark_source_success(cur, lake["lake_code"], "usgs", now)
                 for s in series:
                     code = s["variable"]["variableCode"][0]["value"]
                     vals = s.get("values", [{}])[0].get("value", [])
@@ -135,6 +273,7 @@ def run_sync():
         usace_out = fetch_usace_bulletin_release(lake["lake_code"])
         if usace_out is not None:
             water_data["release_cfs"] = usace_out
+            mark_source_success(cur, lake["lake_code"], "usace", now)
 
         cur.execute(insert_sql, (
             now,
@@ -153,6 +292,7 @@ def run_sync():
             w_data.get("precipitation"),
             w_data.get("uv_index")
         ))
+        mark_source_success(cur, lake["lake_code"], "telemetry", now)
         print(f"[{lake['lake_code']}] Sync complete")
 
     conn.commit()
@@ -164,5 +304,6 @@ if __name__ == "__main__":
     while True:
         run_sync()
         check_and_sync_odwc_regs()
+        check_and_sync_odwc_species()
         print("Waiting 15 minutes for next scheduled cycle...")
         time.sleep(900)

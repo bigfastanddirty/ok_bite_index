@@ -72,7 +72,6 @@ class DirectoryLinkParser(HTMLParser):
 def extract_regs_from_html(html_text):
     html_text = html_lib.unescape(html_text)
 
-    # Stop matching at any metadata or subsequent section headers
     pattern = re.compile(
         r"Area Specific Fishing Regulations.*?(?=LOCATION/DESCRIPTION|Driving Directions|CONTACT|FACILITIES|Fish Species|Recreational|block-layout-builder|<div class=\"block|\Z)",
         re.I | re.S
@@ -80,12 +79,10 @@ def extract_regs_from_html(html_text):
     match = pattern.search(html_text)
     if match:
         raw_section = match.group(0)
-        # Strip all HTML tags
         clean_text = re.sub(r"<[^>]+>", " ", raw_section)
         clean_text = clean_text.replace("\xa0", " ")
         lines = [" ".join(line.split()) for line in clean_text.splitlines() if line.strip()]
-        
-        # Filter out header labels and metadata spillover
+
         filtered = []
         for line in lines:
             if re.search(r"^(Area Specific Fishing Regulations|Driving Directions|Recreational)", line, re.I):
@@ -158,35 +155,101 @@ def sync_odwc_regs(conn):
             print(f"[ODWC Sync] Error updating {code}: {e}", flush=True)
 
     conn.commit()
+    cur.close()
     print("[ODWC Sync] Finished updating lake regulations in database.", flush=True)
 
 def check_and_sync_odwc_regs():
-    LOCK_FILE = "/tmp/odwc_regs_sync.timestamp"
-    WEEK_IN_SECONDS = 7 * 24 * 3600
+    """
+    Run the ODWC regulations scraper no more than once every 7 days.
 
-    should_run = True
-    if os.path.exists(LOCK_FILE):
-        try:
-            with open(LOCK_FILE, "r") as lf:
-                last_run = float(lf.read().strip() or 0)
-                if time.time() - last_run < WEEK_IN_SECONDS:
-                    should_run = False
-        except Exception:
-            should_run = True
+    Scheduler state is stored in PostgreSQL so container restarts/rebuilds
+    do not reset the interval.
+    """
+    conn = None
 
-    if should_run:
-        print("[ODWC Regulations] 7-day interval check triggered. Starting sync...", flush=True)
-        try:
-            conn = psycopg2.connect(
-                host=os.getenv("DB_HOST", "ok_lakes_db"),
-                port=int(os.getenv("DB_PORT", 5432)),
-                dbname=os.getenv("POSTGRES_DB", "ok_fishing_db"),
-                user=os.getenv("POSTGRES_USER", "lake_admin"),
-                password=os.getenv("POSTGRES_PASSWORD", "")
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "ok_lakes_db"),
+            port=int(os.getenv("DB_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "ok_fishing_db"),
+            user=os.getenv("POSTGRES_USER", "lake_admin"),
+            password=os.getenv("POSTGRES_PASSWORD", "")
+        )
+
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.app_sync_state (
+                sync_name TEXT PRIMARY KEY,
+                last_run TIMESTAMPTZ NOT NULL
+            );
+        """)
+        conn.commit()
+
+        cur.execute("""
+            SELECT last_run
+            FROM public.app_sync_state
+            WHERE sync_name = 'odwc_regulations';
+        """)
+        row = cur.fetchone()
+
+        # First run after migrating away from /tmp:
+        # mark the current time complete rather than immediately scraping again.
+        # This avoids a rebuild triggering another ODWC scrape.
+        if row is None:
+            cur.execute("""
+                INSERT INTO public.app_sync_state (sync_name, last_run)
+                VALUES ('odwc_regulations', NOW());
+            """)
+            conn.commit()
+            cur.close()
+
+            print(
+                "[ODWC Regulations] Persistent weekly scheduler initialized; "
+                "current interval marked complete.",
+                flush=True
             )
-            sync_odwc_regs(conn)
+            return
+
+        last_run = row[0]
+
+        cur.execute("""
+            SELECT NOW() >= %s + INTERVAL '7 days';
+        """, (last_run,))
+        should_run = cur.fetchone()[0]
+        cur.close()
+
+        if not should_run:
+            return
+
+        print(
+            "[ODWC Regulations] 7-day interval check triggered. Starting sync...",
+            flush=True
+        )
+
+        sync_odwc_regs(conn)
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO public.app_sync_state (sync_name, last_run)
+            VALUES ('odwc_regulations', NOW())
+            ON CONFLICT (sync_name)
+            DO UPDATE SET last_run = EXCLUDED.last_run;
+        """)
+        conn.commit()
+        cur.close()
+
+        print(
+            "[ODWC Regulations] Weekly synchronization completed; "
+            "scheduler timestamp updated.",
+            flush=True
+        )
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"[ODWC Regulations] Failed to sync: {e}", flush=True)
+
+    finally:
+        if conn:
             conn.close()
-            with open(LOCK_FILE, "w") as lf:
-                lf.write(str(time.time()))
-        except Exception as e:
-            print(f"[ODWC Regulations] Failed to sync: {e}", flush=True)

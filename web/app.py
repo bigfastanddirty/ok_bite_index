@@ -153,45 +153,72 @@ def calculate_time_of_day_factor(dt_val):
         return 0.0
 
 def calculate_spawn_phase(water_temp_f, month, diff_ft=0.0):
+    """
+    Estimate the lake's broad seasonal fishing phase.
+
+    Water temperature is the primary biological signal.
+    Calendar month acts as a seasonal guardrail for spawn-related phases.
+    """
     if water_temp_f is None:
         water_temp_f = 70.0
+
     wt = float(water_temp_f)
-    
-    if month in (12, 1, 2) or wt < 50:
+
+    # Winter / cold-water period
+    if wt < 50:
         return {
             "phase": "Winter Torpor / Staging",
             "tactic": "Metabolism suppressed. Baitfish suspended over deep wintering river channels and main-lake basins."
         }
-    elif month in (3, 4) and wt < 60:
+
+    # Early spring pre-spawn
+    if 50 <= wt < 60 and month in (2, 3, 4):
         return {
             "phase": "Pre-Spawn Movement",
-            "tactic": "Bass and crappie staging along secondary points and creek channel contours leading into protected pockets."
+            "tactic": "Bass and crappie staging along secondary points and creek-channel contours leading into protected pockets."
         }
-    elif (month in (4, 5) and 60 <= wt <= 72) or (month == 5 and wt < 75):
+
+    # Primary spawning window
+    if 60 <= wt <= 72 and month in (3, 4, 5):
         return {
             "phase": "Active Spawn / Bedding",
             "tactic": "Shallow nest guarding in protected coves, flat pockets, and hard-bottom sand/gravel banks."
         }
-    elif month in (5, 6) and wt > 72:
+
+    # Post-spawn recovery
+    if 72 < wt < 78 and month in (5, 6):
         return {
             "phase": "Post-Spawn Recovery",
-            "tactic": "Fish sliding to immediate outside weedlines, brush piles, and secondary drops to feed on shad spawns."
+            "tactic": "Fish sliding toward outside weedlines, brush piles, secondary drops, and shad-oriented structure."
         }
-    elif month in (6, 7, 8) or (month == 9 and wt > 82):
+
+    # Hot-water summer pattern.
+    # Temperature intentionally overrides the calendar so hot September
+    # reservoirs are not prematurely classified as fall.
+    if wt >= 80:
         return {
             "phase": "Summer Thermal Refuge",
-            "tactic": "Predators holding near current breaks, deep brush, or thermoclines during mid-day heat."
+            "tactic": "Predators favoring current breaks, deeper structure, shade, and thermocline-related depth during bright periods."
         }
-    elif month in (9, 10, 11):
+
+    # Fall transition begins when the lake actually cools.
+    if month in (9, 10, 11) and 60 <= wt < 80:
         return {
             "phase": "Fall Forage Push",
-            "tactic": "Aggressive predatory migration tracking schooling threadfin shad into creek channels and wind-blown pockets."
+            "tactic": "Predators tracking schooling shad into creek arms, flats, points, and windblown pockets."
         }
-    else:
+
+    # Late-fall cooling
+    if month in (10, 11, 12) and 50 <= wt < 60:
         return {
-            "phase": "Transitional",
-            "tactic": "Scattered forage holding along primary breaklines and secondary creek points."
+            "phase": "Late Fall Transition",
+            "tactic": "Fish consolidating around channel edges, rock, deeper points, and remaining forage concentrations."
         }
+
+    return {
+        "phase": "Transitional",
+        "tactic": "Scattered forage holding along primary breaklines, points, and secondary creek structure."
+    }
 
 def calculate_solunar_factor(dt_val, lon, lat):
     try:
@@ -363,6 +390,177 @@ def calculate_master_bite_score(
 
     return final_score, rating, window_type
 
+
+def calculate_bite_score_breakdown(
+    delta_press,
+    wind_speed,
+    cloud_cover,
+    dt_val,
+    lon,
+    lat,
+    water_temp_f=None,
+    release_cfs=None,
+    elev_delta_24h=None,
+    precip_in=None
+):
+    """Return the same major score contributions used by the bite model."""
+    factors = []
+
+    def add(label, points, detail):
+        factors.append({
+            "label": label,
+            "points": int(round(points)),
+            "detail": detail
+        })
+
+    dp = float(delta_press or 0.0)
+    wind = float(wind_speed or 0.0)
+    clouds = float(cloud_cover or 0.0)
+
+    if dp <= -1.2:
+        add("Pressure trend", 25, "Strong falling-pressure feeding trigger")
+    elif dp <= -0.4:
+        add("Pressure trend", 15, "Falling pressure favors feeding")
+    elif dp < 0.6:
+        add("Pressure trend", 4, "Stable pressure")
+    elif dp >= 1.8:
+        add("Pressure trend", -22, "Rapidly rising pressure")
+    else:
+        add("Pressure trend", -10, "Rising pressure")
+
+    if 5.0 <= wind <= 13.0:
+        add("Wind", 12, "Productive surface chop")
+    elif 13.0 < wind <= 18.0:
+        add("Wind", 6, "Strong but workable wind")
+    elif wind < 4.0:
+        add("Wind", -8, "Little surface disturbance")
+    else:
+        add("Wind", -14, "Excessive wind")
+
+    if clouds >= 65:
+        add("Cloud cover", 8, "Low-light conditions")
+    elif clouds <= 15:
+        add("Cloud cover", -4, "Bright clear conditions")
+    else:
+        add("Cloud cover", 0, "Moderate cloud cover")
+
+    tod = calculate_time_of_day_factor(dt_val)
+    add("Time of day", tod, "Diurnal feeding-window adjustment")
+
+    sol_score, sol_window = calculate_solunar_factor(dt_val, lon, lat)
+    add("Solunar", sol_score, f"{sol_window.title()} lunar window")
+
+    wt_score = calculate_water_temp_factor(water_temp_f)
+    add("Water temperature", wt_score, "Seasonal metabolism adjustment")
+
+    flow_score = 0
+    if release_cfs is not None:
+        try:
+            if float(release_cfs) > 100.0:
+                flow_score = 5
+        except Exception:
+            pass
+    add("Dam flow", flow_score, "Current / tailrace effect")
+
+    pool_score = 0
+    if elev_delta_24h is not None:
+        try:
+            ed = float(elev_delta_24h)
+            if ed < -0.3:
+                pool_score = -6
+            elif 0.1 <= ed <= 0.5:
+                pool_score = 4
+        except Exception:
+            pass
+    add("Pool trend", pool_score, "24-hour water-level movement")
+
+    precip_score = 0
+    if precip_in is not None:
+        try:
+            pr = float(precip_in)
+            if 0.05 <= pr <= 0.40:
+                precip_score = 7
+            elif 0.40 < pr <= 0.80:
+                precip_score = 3
+            elif pr > 1.20:
+                precip_score = -12
+        except Exception:
+            pass
+    add("Precipitation", precip_score, "Runoff / disturbance adjustment")
+
+    return factors
+
+
+def get_source_freshness(lake_code, fallback_timestamp=None):
+    """
+    Read per-source success timestamps written by the ingestor.
+    Falls back to the lake reading timestamp if the status table has not
+    been created yet.
+    """
+    result = {}
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT to_regclass('public.lake_source_status') AS table_name;")
+        exists = cur.fetchone()
+        if exists and exists.get("table_name"):
+            cur.execute(
+                """
+                SELECT source, last_success
+                FROM lake_source_status
+                WHERE lake_code = %s
+                ORDER BY source;
+                """,
+                (lake_code,)
+            )
+            for item in cur.fetchall():
+                result[item["source"]] = item["last_success"]
+        cur.close()
+    except Exception:
+        pass
+    finally:
+        if conn:
+            conn.close()
+
+    if not result and fallback_timestamp:
+        result["telemetry"] = fallback_timestamp
+
+    return result
+
+
+def calculate_best_window(forecast_cards, window_hours=3, horizon_hours=24):
+    """Return the strongest rolling fishing window in the next 24 forecast hours."""
+    cards = list(forecast_cards or [])[:horizon_hours]
+    if not cards:
+        return None
+
+    width = max(1, min(int(window_hours), len(cards)))
+    best = None
+
+    for i in range(0, len(cards) - width + 1):
+        group = cards[i:i + width]
+        scores = [float(x.get("bite_score") or 0) for x in group]
+        avg_score = sum(scores) / len(scores)
+        peak_score = max(scores)
+
+        candidate = {
+            "start": group[0].get("time"),
+            "end": group[-1].get("time"),
+            "average_score": int(round(avg_score)),
+            "peak_score": int(round(peak_score))
+        }
+
+        if best is None or (candidate["average_score"], candidate["peak_score"]) > (best["average_score"], best["peak_score"]):
+            best = candidate
+
+    if best:
+        sc = best["average_score"]
+        best["rating"] = "EPIC" if sc >= 80 else ("GOOD" if sc >= 65 else ("FAIR" if sc >= 45 else "TOUGH"))
+
+    return best
+
+
 @app.api_route("/methodology", methods=["GET", "HEAD"], response_class=HTMLResponse)
 @app.api_route("/about", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def get_methodology():
@@ -451,13 +649,598 @@ def get_lakes(response: Response):
     return rows
 
 
+
+def rank_target_species(
+    species_list,
+    water_temp_f,
+    month,
+    diff_from_normal_ft=0.0,
+    elevation_delta_24h=None,
+    inflow_cfs=None,
+    release_cfs=None,
+    pressure_delta_hpa=0.0,
+    wind_speed_mph=0.0,
+    cloud_cover_pct=0.0,
+    precipitation_in=0.0,
+    top_n=3
+):
+    """
+    Rank only species that ODWC lists for the selected lake.
+
+    Returns:
+      ranked_names: top species names
+      details: explainable scoring records for all candidates
+
+    This is a tactical ranking heuristic, not a biological population model.
+    """
+    if not species_list:
+        return [], []
+
+    try:
+        wt = float(water_temp_f) if water_temp_f is not None else 70.0
+    except Exception:
+        wt = 70.0
+
+    try:
+        pool_diff = float(diff_from_normal_ft or 0.0)
+    except Exception:
+        pool_diff = 0.0
+
+    try:
+        elev_delta = float(elevation_delta_24h or 0.0)
+    except Exception:
+        elev_delta = 0.0
+
+    try:
+        inflow = float(inflow_cfs or 0.0)
+    except Exception:
+        inflow = 0.0
+
+    try:
+        release = float(release_cfs or 0.0)
+    except Exception:
+        release = 0.0
+
+    try:
+        dp = float(pressure_delta_hpa or 0.0)
+    except Exception:
+        dp = 0.0
+
+    try:
+        wind = float(wind_speed_mph or 0.0)
+    except Exception:
+        wind = 0.0
+
+    try:
+        clouds = float(cloud_cover_pct or 0.0)
+    except Exception:
+        clouds = 0.0
+
+    try:
+        precip = float(precipitation_in or 0.0)
+    except Exception:
+        precip = 0.0
+
+    month = int(month or datetime.now(timezone.utc).month)
+
+    def add(rec, points, reason):
+        rec["score"] += points
+        if reason:
+            rec["reasons"].append(reason)
+
+    ranked = []
+
+    for original_name in species_list:
+        name = str(original_name).strip()
+        key = name.lower()
+
+        rec = {
+            "species": name,
+            "score": 50.0,
+            "reasons": []
+        }
+
+        # ---------- LARGEMOUTH BASS ----------
+        if "bass, largemouth" in key or "largemouth bass" in key:
+            if 60 <= wt <= 82:
+                add(rec, 16, "Water temperature is in a strong largemouth feeding range.")
+            elif wt > 86:
+                add(rec, -8, "Very warm water can suppress midday largemouth activity.")
+            elif wt < 48:
+                add(rec, -10, "Cold water reduces largemouth metabolism.")
+
+            if pool_diff >= 1.0:
+                add(rec, 12, "Elevated pool expands flooded shoreline cover.")
+            if elev_delta > 0.10:
+                add(rec, 6, "Rising water encourages shallow movement.")
+            if 5 <= wind <= 15:
+                add(rec, 7, "Moderate wind improves ambush conditions.")
+            if dp <= -0.5:
+                add(rec, 8, "Falling pressure can trigger aggressive feeding.")
+            if clouds >= 60:
+                add(rec, 6, "Cloud cover favors roaming shallow fish.")
+            if 3 <= month <= 6:
+                add(rec, 6, "Spring through early summer is a strong seasonal window.")
+
+        # ---------- SMALLMOUTH BASS ----------
+        elif "bass, smallmouth" in key or "smallmouth bass" in key:
+            if 52 <= wt <= 74:
+                add(rec, 18, "Moderate water temperature favors smallmouth activity.")
+            elif wt >= 82:
+                add(rec, -10, "Hot surface temperatures often push smallmouth deeper.")
+            if 6 <= wind <= 18:
+                add(rec, 10, "Wind activates rocky points and offshore structure.")
+            if dp <= -0.4:
+                add(rec, 7, "Falling pressure supports active feeding.")
+            if pool_diff <= 1.0:
+                add(rec, 4, "Stable pool conditions favor structure-oriented smallmouth.")
+            if month in (3, 4, 5, 9, 10, 11):
+                add(rec, 6, "Spring and fall favor smallmouth movement.")
+
+        # ---------- SPOTTED BASS ----------
+        elif "bass, spotted" in key or "spotted bass" in key:
+            if 55 <= wt <= 80:
+                add(rec, 14, "Water temperature supports active spotted bass.")
+            if 5 <= wind <= 16:
+                add(rec, 8, "Moderate wind improves feeding on points and bluffs.")
+            if release > 100 or inflow > 200:
+                add(rec, 6, "Current can concentrate forage.")
+            if dp <= -0.4:
+                add(rec, 5, "Falling pressure can improve feeding activity.")
+
+        # ---------- WHITE BASS ----------
+        elif "bass, white" in key or "white bass" in key:
+            if 58 <= wt <= 84:
+                add(rec, 16, "Water temperature supports active white bass.")
+            if wind >= 6:
+                add(rec, 10, "Wind helps concentrate shad and schooling fish.")
+            if inflow >= 200 or release >= 200:
+                add(rec, 10, "Current concentrates forage and schooling white bass.")
+            if dp <= -0.5:
+                add(rec, 8, "Falling pressure can strengthen schooling activity.")
+            if month in (3, 4, 5, 9, 10, 11):
+                add(rec, 8, "Spring and fall are strong white bass movement periods.")
+
+        # ---------- STRIPED / HYBRID BASS ----------
+        elif "striped" in key or "hybrid" in key:
+            if 55 <= wt <= 78:
+                add(rec, 18, "Water temperature is favorable for striped/hybrid bass.")
+            elif wt > 84:
+                add(rec, -8, "Very warm water can restrict striped bass to deeper refuge.")
+            if wind >= 6:
+                add(rec, 9, "Wind can push forage into predictable feeding zones.")
+            if inflow >= 200 or release >= 200:
+                add(rec, 12, "Current can strongly concentrate baitfish.")
+            if dp <= -0.5:
+                add(rec, 7, "Falling pressure can improve open-water feeding.")
+            if clouds >= 50:
+                add(rec, 5, "Lower light favors longer feeding windows.")
+
+        # ---------- CRAPPIE ----------
+        elif "crappie" in key:
+            if 52 <= wt <= 72:
+                add(rec, 18, "Water temperature is favorable for crappie.")
+            elif 72 < wt <= 82:
+                add(rec, 8, "Warm water still supports crappie around deeper structure.")
+            elif wt > 86:
+                add(rec, -7, "Extreme heat often pushes crappie deeper and reduces daytime activity.")
+            if abs(elev_delta) <= 0.20:
+                add(rec, 8, "Stable water level favors predictable brush and structure patterns.")
+            if wind <= 12:
+                add(rec, 5, "Light-to-moderate wind supports controlled vertical presentations.")
+            if month in (2, 3, 4, 5, 10, 11):
+                add(rec, 8, "Seasonal timing favors crappie movement and feeding.")
+            if clouds >= 50:
+                add(rec, 4, "Cloud cover can extend shallow feeding periods.")
+
+        # ---------- BLUE CATFISH ----------
+        elif "catfish, blue" in key or "blue catfish" in key:
+            if 55 <= wt <= 85:
+                add(rec, 14, "Water temperature supports active blue catfish.")
+            if inflow >= 200 or release >= 200:
+                add(rec, 14, "Current concentrates forage and scent corridors.")
+            if pool_diff >= 1.0:
+                add(rec, 9, "Elevated water expands feeding access to flooded habitat.")
+            if elev_delta > 0.10:
+                add(rec, 6, "Rising water can increase shallow feeding activity.")
+            if precip >= 0.05:
+                add(rec, 7, "Recent precipitation can improve runoff-driven feeding.")
+            if clouds >= 50:
+                add(rec, 4, "Low light can extend active feeding windows.")
+
+        # ---------- CHANNEL CATFISH ----------
+        elif "catfish, channel" in key or "channel catfish" in key:
+            if 62 <= wt <= 86:
+                add(rec, 16, "Warm water favors channel catfish feeding.")
+            if precip >= 0.05:
+                add(rec, 10, "Recent rain can increase shoreline and inflow feeding.")
+            if inflow >= 100:
+                add(rec, 8, "Inflow delivers forage and scent.")
+            if pool_diff >= 0.5:
+                add(rec, 6, "Elevated water increases access to shallow feeding areas.")
+            if month in (5, 6, 7, 8, 9):
+                add(rec, 6, "Warm-season timing favors channel catfish activity.")
+
+        # ---------- FLATHEAD CATFISH ----------
+        elif "catfish, flathead" in key or "flathead catfish" in key:
+            if 68 <= wt <= 84:
+                add(rec, 18, "Warm water supports active flathead metabolism.")
+            elif wt < 55:
+                add(rec, -12, "Cold water strongly reduces flathead activity.")
+            if inflow >= 150 or release >= 150:
+                add(rec, 8, "Current edges create ambush opportunities.")
+            if clouds >= 50:
+                add(rec, 5, "Low light favors flathead movement.")
+            if month in (5, 6, 7, 8, 9):
+                add(rec, 8, "Warm-season timing favors flathead activity.")
+
+        # ---------- WALLEYE / SAUGEYE / SAUGER ----------
+        elif "walleye" in key or "saugeye" in key or "sauger" in key:
+            if 45 <= wt <= 68:
+                add(rec, 20, "Cool-to-moderate water strongly favors walleye-family activity.")
+            elif 68 < wt <= 76:
+                add(rec, 6, "Water remains workable but may shift fish deeper.")
+            elif wt >= 80:
+                add(rec, -12, "Warm water generally reduces shallow walleye-family activity.")
+            if clouds >= 50:
+                add(rec, 9, "Low light favors walleye-family feeding.")
+            if wind >= 5:
+                add(rec, 7, "Wind creates low-light, broken-surface feeding conditions.")
+            if month in (2, 3, 4, 10, 11, 12):
+                add(rec, 8, "Seasonal timing favors cool-water movement.")
+
+        # ---------- PADDLEFISH ----------
+        elif "paddlefish" in key:
+            if inflow >= 500 or release >= 500:
+                add(rec, 20, "Strong current is favorable for paddlefish movement.")
+            else:
+                add(rec, -8, "Limited current reduces paddlefish movement potential.")
+            if month in (2, 3, 4, 5):
+                add(rec, 12, "Spring timing favors paddlefish movement.")
+
+        # ---------- SUNFISH ----------
+        elif "sunfish" in key:
+            if 68 <= wt <= 84:
+                add(rec, 14, "Warm water favors sunfish activity.")
+            if pool_diff >= 0:
+                add(rec, 4, "Stable-to-elevated pool supports shallow cover.")
+            if wind <= 12:
+                add(rec, 4, "Lower wind improves shallow presentation control.")
+            if month in (5, 6, 7, 8, 9):
+                add(rec, 6, "Warm-season timing favors sunfish feeding.")
+
+        # ---------- ALLIGATOR GAR ----------
+        elif "gar, alligator" in key or "alligator gar" in key:
+            if wt >= 70:
+                add(rec, 14, "Warm water favors alligator gar activity.")
+            if inflow >= 200 or pool_diff >= 1.0:
+                add(rec, 8, "Current or elevated water can increase feeding opportunities.")
+
+        # Unknown/other ODWC species remain valid candidates with neutral score.
+        # This ensures we never invent a species that ODWC did not list.
+
+        rec["score"] = round(max(0.0, min(100.0, rec["score"])), 1)
+        ranked.append(rec)
+
+    ranked.sort(key=lambda x: (-x["score"], x["species"].lower()))
+
+    top = ranked[:max(1, min(int(top_n), len(ranked)))]
+    return [item["species"] for item in top], ranked
+
+
+
+
+def format_species_name(name):
+    """
+    Convert ODWC's canonical "Family, Type" labels into natural prose while
+    leaving the stored database value unchanged.
+    """
+    value = str(name or "").strip()
+
+    if "," in value:
+        left, right = [part.strip() for part in value.split(",", 1)]
+        if left and right:
+            return f"{right} {left}"
+
+    return value
+
+
+def _species_family(species_name):
+    s = str(species_name or "").lower()
+
+    if "bass, largemouth" in s or "largemouth bass" in s:
+        return "largemouth"
+    if "bass, smallmouth" in s or "smallmouth bass" in s:
+        return "smallmouth"
+    if "bass, spotted" in s or "spotted bass" in s:
+        return "spotted"
+    if "bass, white" in s or "white bass" in s:
+        return "white_bass"
+    if "striped" in s or "hybrid" in s:
+        return "striped_hybrid"
+    if "crappie" in s:
+        return "crappie"
+    if "catfish, blue" in s or "blue catfish" in s:
+        return "blue_catfish"
+    if "catfish, channel" in s or "channel catfish" in s:
+        return "channel_catfish"
+    if "catfish, flathead" in s or "flathead catfish" in s:
+        return "flathead_catfish"
+    if "walleye" in s or "saugeye" in s or "sauger" in s:
+        return "walleye_family"
+    if "paddlefish" in s:
+        return "paddlefish"
+    if "sunfish" in s:
+        return "sunfish"
+    if "gar, alligator" in s or "alligator gar" in s:
+        return "alligator_gar"
+
+    return "other"
+
+
+
+def build_recommended_tactic(
+    ranked_species,
+    water_temp_f,
+    diff_from_normal_ft,
+    elevation_delta_24h,
+    inflow_cfs,
+    release_cfs,
+    pressure_delta_hpa,
+    wind_speed_mph,
+    cloud_cover_pct,
+    precipitation_in,
+    dt_val
+):
+    """
+    Build a concise, actionable tactic:
+    - top 2 ranked species
+    - one key environmental adjustment
+    """
+    if not ranked_species:
+        return "Target the strongest combination of forage, structure, current, and depth transitions."
+
+    try:
+        wt = float(water_temp_f or 70.0)
+    except Exception:
+        wt = 70.0
+
+    try:
+        pool_diff = float(diff_from_normal_ft or 0.0)
+    except Exception:
+        pool_diff = 0.0
+
+    try:
+        elev_delta = float(elevation_delta_24h or 0.0)
+    except Exception:
+        elev_delta = 0.0
+
+    try:
+        inflow = float(inflow_cfs or 0.0)
+    except Exception:
+        inflow = 0.0
+
+    try:
+        release = float(release_cfs or 0.0)
+    except Exception:
+        release = 0.0
+
+    try:
+        dp = float(pressure_delta_hpa or 0.0)
+    except Exception:
+        dp = 0.0
+
+    try:
+        wind = float(wind_speed_mph or 0.0)
+    except Exception:
+        wind = 0.0
+
+    try:
+        clouds = float(cloud_cover_pct or 0.0)
+    except Exception:
+        clouds = 0.0
+
+    try:
+        precip = float(precipitation_in or 0.0)
+    except Exception:
+        precip = 0.0
+
+    if isinstance(dt_val, datetime):
+        local_dt = dt_val.astimezone(timezone(timedelta(hours=-5)))
+        hour = local_dt.hour
+    else:
+        hour = 12
+
+    profiles = {
+        "largemouth": "work flooded shoreline cover and secondary points with moving baits, then jigs or Texas rigs",
+        "smallmouth": "work rocky points, bluff ends, and humps with jerkbaits, tubes, or Ned rigs",
+        "spotted": "target main-lake points and bluff transitions with small swimbaits or finesse jigs",
+        "white_bass": "follow bait on windblown points and humps with small swimbaits, spoons, or inline spinners",
+        "striped_hybrid": "target open-water bait schools, channel edges, and current seams with shad, swimbaits, or spoons",
+        "crappie": "fish brush, timber, docks, and bridge structure vertically with small jigs or minnows",
+        "blue_catfish": "work channel-adjacent flats and current seams with fresh cut bait",
+        "channel_catfish": "fish runoff mouths, riprap, flats, and inflow areas with cut or prepared bait",
+        "flathead_catfish": "target timber, channel bends, and heavy cover with legal live or natural bait",
+        "walleye_family": "work windblown points, riprap, and breaklines with jig-and-minnow rigs or crankbaits",
+        "paddlefish": "focus on legal paddlefish zones and current corridors using only current ODWC-approved methods",
+        "sunfish": "fish shallow cover, docks, and vegetation edges with small jigs or worms",
+        "alligator_gar": "focus on channel, backwater, and inflow corridors with species-appropriate legal tackle",
+        "other": "match presentation speed and depth to forage, structure, and current"
+    }
+
+    top_parts = []
+    for species in ranked_species[:2]:
+        fam = _species_family(species)
+        instruction = profiles.get(fam, profiles["other"])
+        display_species = format_species_name(species)
+        top_parts.append(f"For {display_species}, {instruction}.")
+
+    adjustment = None
+
+    # Priority order: strongest tactical modifier wins.
+    if pool_diff >= 1.0 and elev_delta >= 0.10:
+        adjustment = "Prioritize newly flooded shoreline cover and the first adjacent drop."
+    elif pool_diff >= 1.0:
+        adjustment = "Use the elevated pool to fish flooded cover, but check nearby depth transitions."
+    elif elev_delta <= -0.20:
+        adjustment = "With falling water, back off to the first break, channel edge, or remaining cover."
+    elif inflow >= 800 or release >= 800:
+        adjustment = "Strong current makes seams, eddies, bridge constrictions, and downstream forage concentrations high-priority."
+    elif inflow >= 200 or release >= 200:
+        adjustment = "Use current-facing points and seams where forage is being concentrated."
+    elif precip >= 0.05 and inflow > 0:
+        adjustment = "Check runoff color lines and inflow mouths for a localized feeding response."
+    elif dp <= -0.5:
+        adjustment = "Use faster moving presentations first while the falling-pressure window is active."
+    elif wind >= 7:
+        adjustment = "Favor windblown banks and points where chop is concentrating bait."
+    elif clouds <= 25 and wt >= 78 and 10 <= hour <= 16:
+        adjustment = "As the sun climbs, shift toward deeper edges, shade, and vertical structure."
+    elif wind < 4:
+        adjustment = "With little surface chop, slow down and emphasize shade, depth, and isolated cover."
+
+    if adjustment:
+        return " ".join(top_parts + [adjustment])
+
+    return " ".join(top_parts)
+
+
+
+
+def build_tactical_strategy(
+    ranked_species,
+    species_ranking,
+    water_temp_f,
+    diff_from_normal_ft,
+    elevation_delta_24h,
+    inflow_cfs,
+    release_cfs,
+    pressure_delta_hpa,
+    wind_speed_mph,
+    cloud_cover_pct,
+    precipitation_in,
+    seasonal_phase,
+    solunar_window
+):
+    """
+    Build a concise 3-sentence strategy:
+    1) pool/hydrology
+    2) temperature/light/wind
+    3) strongest extra factor + target summary
+    """
+    try:
+        wt = float(water_temp_f or 70.0)
+    except Exception:
+        wt = 70.0
+
+    try:
+        pool_diff = float(diff_from_normal_ft or 0.0)
+    except Exception:
+        pool_diff = 0.0
+
+    try:
+        elev_delta = float(elevation_delta_24h or 0.0)
+    except Exception:
+        elev_delta = 0.0
+
+    try:
+        inflow = float(inflow_cfs or 0.0)
+    except Exception:
+        inflow = 0.0
+
+    try:
+        release = float(release_cfs or 0.0)
+    except Exception:
+        release = 0.0
+
+    try:
+        dp = float(pressure_delta_hpa or 0.0)
+    except Exception:
+        dp = 0.0
+
+    try:
+        wind = float(wind_speed_mph or 0.0)
+    except Exception:
+        wind = 0.0
+
+    try:
+        clouds = float(cloud_cover_pct or 0.0)
+    except Exception:
+        clouds = 0.0
+
+    try:
+        precip = float(precipitation_in or 0.0)
+    except Exception:
+        precip = 0.0
+
+    # Sentence 1: pool/hydrology
+    if pool_diff >= 1.0:
+        if elev_delta > 0.10:
+            s1 = f"The lake is {pool_diff:.1f} ft above normal and rising, favoring newly flooded cover."
+        elif elev_delta < -0.20:
+            s1 = f"The lake is {pool_diff:.1f} ft above normal but falling, so fish should pull toward nearby breaks."
+        else:
+            s1 = f"The lake is {pool_diff:.1f} ft above normal but stable, keeping flooded cover and adjacent drops productive."
+    elif pool_diff <= -1.0:
+        s1 = f"The lake is {abs(pool_diff):.1f} ft below normal, concentrating fish around channels, points, and deeper cover."
+    else:
+        s1 = "Pool level is near normal, so structure, forage, wind, and light should drive positioning."
+
+    # Sentence 2: temperature/light/wind
+    if wt >= 80 and clouds <= 25:
+        s2 = f"Warm {wt:.0f}°F water and clear skies favor an early shallow window followed by deeper structure and shade."
+    elif wt >= 76 and wind >= 7:
+        s2 = f"Warm {wt:.0f}°F water with {wind:.0f} mph wind should keep forage active on exposed points and banks."
+    elif wt >= 76:
+        s2 = f"Warm {wt:.0f}°F water supports active feeding, with structure and depth becoming more important as light increases."
+    elif wt >= 60:
+        s2 = f"Water near {wt:.0f}°F supports broad feeding activity across shallow-to-mid-depth structure."
+    else:
+        s2 = f"Cool water near {wt:.0f}°F favors slower presentations around rock, channels, and seasonal staging areas."
+
+    # Sentence 3: strongest extra modifier
+    extra = None
+    if inflow >= 800 or release >= 800:
+        extra = "Strong current is a major positioning factor, so prioritize seams, constrictions, and downstream forage."
+    elif inflow >= 200 or release >= 200:
+        extra = "Moderate current should concentrate forage around seams, points, and channel-related structure."
+    elif dp <= -0.8:
+        extra = "A meaningful pressure drop supports a more aggressive feeding window."
+    elif dp >= 0.8:
+        extra = "Rising pressure may tighten fish to cover or depth, favoring slower and more precise presentations."
+    elif precip >= 0.05:
+        extra = "Recent precipitation makes runoff pockets and inflow areas worth checking."
+    elif solunar_window in ("MAJOR", "MINOR"):
+        extra = f"A {solunar_window.lower()} solunar window may briefly improve activity in the highest-confidence areas."
+    elif seasonal_phase:
+        extra = f"Seasonal context is {seasonal_phase.lower()}."
+
+    if ranked_species:
+        display_targets = [format_species_name(s) for s in ranked_species[:3]]
+        if len(display_targets) == 1:
+            leaders = display_targets[0]
+        elif len(display_targets) == 2:
+            leaders = f"{display_targets[0]} and {display_targets[1]}"
+        else:
+            leaders = f"{display_targets[0]}, {display_targets[1]}, and {display_targets[2]}"
+        if extra:
+            s3 = f"{extra} Top targets are {leaders}."
+        else:
+            s3 = f"Current telemetry ranks {leaders} as the strongest targets."
+    else:
+        s3 = extra or "Use the strongest combination of forage, structure, and current."
+
+    return " ".join([s1, s2, s3])
+
+
+
 @app.get("/api/lakes/{lake_code}/analysis")
 def get_lake_analysis(lake_code: str, response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("SELECT name, latitude, longitude, normal_pool_ft, special_regulations FROM lakes WHERE lake_code = %s", (lake_code,))
+    cur.execute("SELECT name, latitude, longitude, normal_pool_ft, special_regulations, target_species FROM lakes WHERE lake_code = %s", (lake_code,))
     lake_meta = cur.fetchone() or {"latitude": 35.5, "longitude": -97.5}
 
     trend_query = """
@@ -567,65 +1350,112 @@ def get_lake_analysis(lake_code: str, response: Response):
         row["bite_score"] = score
         row["bite_rating"] = rating
         row["solunar_window"] = sol_win
-        row["spawn_phase"] = calculate_spawn_phase(w_temp, ts)
+        row["bite_factors"] = calculate_bite_score_breakdown(
+            delta_press=delta_p,
+            wind_speed=w_speed,
+            cloud_cover=c_cover,
+            dt_val=ts,
+            lon=lon_val,
+            lat=lat_val,
+            water_temp_f=w_temp,
+            release_cfs=rel_cfs,
+            elev_delta_24h=elev_delta,
+            precip_in=precip
+        )
+        _month_for_phase = ts.month if hasattr(ts, "month") else datetime.now(timezone.utc).month
+        _seasonal = calculate_spawn_phase(w_temp, _month_for_phase)
+        row["seasonal_phase"] = _seasonal.get("phase")
+        row["spawn_phase"] = _seasonal.copy()
         row["lunar"] = get_lunar_telemetry(ts)
 
         try:
             _wt = float(row.get("water_temp_f") or w_temp or 75.0)
             _diff = float(row.get("diff_from_normal_ft") or 0.0)
-            _cfs = float(row.get("release_cfs") or rel_cfs or 0.0)
-            _p_3h = float(row.get("press_avg_3h") or 0.0)
-            _cur_p = float(row.get("press_avg_now") or row.get("surface_pressure_hpa") or 0.0)
-            _delta_p = (_cur_p - _p_3h) if (_cur_p and _p_3h) else 0.0
-            _month = ts.month if hasattr(ts, 'month') else 4
+            _month = ts.month if hasattr(ts, "month") else datetime.now(timezone.utc).month
 
-            # Check for active surge (major flood pool > 4.5ft or rapid inflow surge > 2000 CFS)
-            if _diff > 4.5 or _cfs > 2000:
-                _species = ["Largemouth Bass", "Blue Catfish", "Flathead Catfish"]
-                _comm = "High inflow and elevated flood pool creating ambush points near flooded shoreline brush, riprap, and secondary creek channels. Target stained runoff lines."
-            elif _diff > 1.5 and _cfs <= 500:
-                # Elevated pool but stable flow (holding water)
-                if (5 <= _month <= 9) or _wt >= 70.0:
-                    _species = ["Largemouth Bass", "Channel Catfish", "White Bass / Sand Bass"]
-                    _comm = "Elevated pool with stable flow. Fish submerged shoreline buckbrush, flooded willow lines, and secondary channel drop-offs."
-                else:
-                    _species = ["Largemouth Bass", "Crappie", "Saugeye"]
-                    _comm = "Elevated lake level with stable baseflow. Work newly submerged timber, brush piles, and secondary channel transitions."
-            elif (3 <= _month <= 5) and (62.0 <= _wt <= 69.0):
-                _species = ["Largemouth Bass (Bedding)", "Black Crappie", "Redear Sunfish"]
-                _comm = "Active Spawn Phase: Bass and crappie locked on shallow beds (1-5 ft). Target protected north-pocket coves, sandy gravel flats, and shoreline stumps with weightless plastics and tubes."
-            elif (2 <= _month <= 4) and (52.0 <= _wt < 62.0):
-                _species = ["Largemouth Bass (Pre-Spawn)", "White Crappie", "Walleye / Saugeye"]
-                _comm = "Pre-Spawn Staging: Heavy females feeding aggressively along primary secondary points, channel swings, and brush at creek mouths (6-12 ft). Work suspending jerkbaits, lipless cranks, and chatterbaits."
-            elif (5 <= _month <= 6) and (70.0 <= _wt < 78.0):
-                _species = ["Largemouth Bass (Post-Spawn)", "White Bass", "Channel Catfish"]
-                _comm = "Post-Spawn Recovery: Fish migrating from shallow coves toward secondary points and offshore ledges. Target shad spawn on riprap early, then switch to deep diving cranks and Carolina rigs on drop-offs."
-            elif _wt >= 78.0:
-                if _delta_p < -0.8:
-                    _species = ["White Bass (Sand Bass)", "Striped Bass", "Largemouth Bass"]
-                    _comm = "Pre-frontal drop triggering active feeding. Target early morning surface boils and windblown humps where shad school."
-                else:
-                    _species = ["Striped / Hybrid Bass", "Crappie", "Channel Catfish"]
-                    _comm = "Warm summer pattern. Target thermocline breaks (15-25 ft), bridge pilings, and deep main-lake brush piles with vertical jigs or live shad."
-            elif (9 <= _month <= 11) and (58.0 <= _wt < 78.0):
-                _species = ["Largemouth Bass", "Crappie", "White Bass"]
-                _comm = "Fall Shad Migration: Predators following massive shad balls into the backs of major creeks and flats. Target bait schools with squarebills and spinnerbaits."
-            else:
-                _species = ["Crappie", "Blue Catfish", "Walleye / Saugeye"]
-                _comm = "Winter pattern: Slow roll vertical jigs around deep brush piles (20-35 ft), river channel bends, and sunken timber."
+            lake_species = (lake_meta or {}).get("target_species") or []
+            if isinstance(lake_species, str):
+                lake_species = [s.strip() for s in lake_species.split(",") if s.strip()]
 
-            row["target_species"] = _species
-            row["primary_species"] = ", ".join(_species)
-            row["analysis_commentary"] = _comm
-            row["tactical_summary"] = _comm
+            ranked_species, species_ranking = rank_target_species(
+                species_list=lake_species,
+                water_temp_f=_wt,
+                month=_month,
+                diff_from_normal_ft=_diff,
+                elevation_delta_24h=row.get("elevation_delta_24h"),
+                inflow_cfs=inflow_cfs,
+                release_cfs=rel_cfs,
+                pressure_delta_hpa=delta_p,
+                wind_speed_mph=w_speed,
+                cloud_cover_pct=c_cover,
+                precipitation_in=precip,
+                top_n=3
+            )
+
+            row["lake_species"] = lake_species
+            row["target_species"] = ranked_species
+            row["primary_species"] = ", ".join(ranked_species)
+            row["species_ranking"] = species_ranking
+
+            recommended_tactic = build_recommended_tactic(
+                ranked_species=ranked_species,
+                water_temp_f=_wt,
+                diff_from_normal_ft=_diff,
+                elevation_delta_24h=row.get("elevation_delta_24h"),
+                inflow_cfs=inflow_cfs,
+                release_cfs=rel_cfs,
+                pressure_delta_hpa=delta_p,
+                wind_speed_mph=w_speed,
+                cloud_cover_pct=c_cover,
+                precipitation_in=precip,
+                dt_val=ts
+            )
+
+            tactical_strategy = build_tactical_strategy(
+                ranked_species=ranked_species,
+                species_ranking=species_ranking,
+                water_temp_f=_wt,
+                diff_from_normal_ft=_diff,
+                elevation_delta_24h=row.get("elevation_delta_24h"),
+                inflow_cfs=inflow_cfs,
+                release_cfs=rel_cfs,
+                pressure_delta_hpa=delta_p,
+                wind_speed_mph=w_speed,
+                cloud_cover_pct=c_cover,
+                precipitation_in=precip,
+                seasonal_phase=row.get("seasonal_phase"),
+                solunar_window=sol_win
+            )
+
+            row["recommended_tactic"] = recommended_tactic
+            row["tactical_strategy"] = tactical_strategy
+
+            # Backward compatibility with the existing HTML:
+            # Recommended Tactic currently reads spawn_phase.tactic.
+            row["spawn_phase"]["tactic"] = recommended_tactic
+
+            # Tactical Strategy currently reads analysis_commentary.
+            row["analysis_commentary"] = tactical_strategy
+            row["tactical_summary"] = tactical_strategy
+
         except Exception as _e:
-            row["target_species"] = ["Largemouth Bass", "Crappie", "Striped Bass"]
-            row["primary_species"] = "Largemouth Bass, Crappie, Striped Bass"
-            row["analysis_commentary"] = "Stable conditions. Focus on main lake structure and depth breaks."
-            row["tactical_summary"] = "Stable conditions. Focus on main lake structure and depth breaks."
+            row["lake_species"] = (lake_meta or {}).get("target_species") or []
+            row["target_species"] = row["lake_species"][:3] if isinstance(row["lake_species"], list) else []
+            row["primary_species"] = ", ".join(row["target_species"])
+            row["species_ranking"] = []
+            row["recommended_tactic"] = "Use lake structure, current, forage, and depth transitions while species ranking is unavailable."
+            row["tactical_strategy"] = "Species ranking is unavailable; use the lake-listed species and current telemetry as the primary guide."
+            if isinstance(row.get("spawn_phase"), dict):
+                row["spawn_phase"]["tactic"] = row["recommended_tactic"]
+            row["analysis_commentary"] = row["tactical_strategy"]
+            row["tactical_summary"] = row["tactical_strategy"]
 
     if row:
+        row["normal_pool_ft"] = float(lake_meta["normal_pool_ft"]) if lake_meta and lake_meta.get("normal_pool_ft") is not None else None
         row["special_regulations"] = (lake_meta or {}).get("special_regulations") or "Statewide general limits apply (no special area restrictions listed)."
+        if "lake_species" not in row:
+            row["lake_species"] = (lake_meta or {}).get("target_species") or []
+        row["source_freshness"] = get_source_freshness(lake_code, row.get("timestamp"))
     return row
 
 @app.get("/api/lakes/{lake_code}/forecast")
@@ -725,10 +1555,12 @@ def get_lake_forecast(lake_code: str, response: Response):
         now_m = now.month if 'now' in locals() else 8
         final_water_temp = estimate_water_temperature(air_val, now_m)
         is_estimated = True
+    visible_forecast = forecast_cards[:48]
     return {
         "lake_code": lake_code,
         "lake_name": lake["name"],
-        "forecast": forecast_cards[:48]
+        "forecast": visible_forecast,
+        "best_window": calculate_best_window(visible_forecast)
     }
 
 @app.get("/api/lakes/{lake_code}/history")
@@ -753,6 +1585,7 @@ def get_history(lake_code: str, response: Response, days: int = 7, target_date: 
                 AVG(water_temp_f) AS water_temp_f,
                 AVG(surface_pressure_hpa) AS surface_pressure_hpa,
                 AVG(release_cfs) AS release_cfs,
+                AVG(inflow_cfs) AS inflow_cfs,
                 AVG(dissolved_oxygen_mg_l) AS dissolved_oxygen_mg_l,
                 AVG(cloud_cover_pct) AS cloud_cover_pct
             FROM lake_readings
@@ -773,6 +1606,7 @@ def get_history(lake_code: str, response: Response, days: int = 7, target_date: 
             )::numeric, 1) AS surface_pressure_hpa,
             ROUND(a.water_temp_f::numeric, 1) AS water_temp_f,
             ROUND(a.release_cfs::numeric, 1) AS release_cfs,
+            ROUND(a.inflow_cfs::numeric, 1) AS inflow_cfs,
             ROUND(a.dissolved_oxygen_mg_l::numeric, 2) AS dissolved_oxygen_mg_l,
             ROUND(a.cloud_cover_pct::numeric, 0) AS cloud_cover_pct
         FROM time_slots ts
@@ -790,6 +1624,7 @@ def get_history(lake_code: str, response: Response, days: int = 7, target_date: 
             ROUND(AVG(air_temp_f)::numeric, 1) AS air_temp_f,
             ROUND(AVG(surface_pressure_hpa)::numeric, 1) AS surface_pressure_hpa,
             ROUND(AVG(release_cfs)::numeric, 1) AS release_cfs,
+            ROUND(AVG(inflow_cfs)::numeric, 1) AS inflow_cfs,
             ROUND(AVG(dissolved_oxygen_mg_l)::numeric, 2) AS dissolved_oxygen_mg_l,
             ROUND(AVG(cloud_cover_pct)::numeric, 0) AS cloud_cover_pct
         FROM lake_readings
