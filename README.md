@@ -32,7 +32,7 @@ DOCKER_ROOT=<Data Location>
 docker compose up -d --build
 ```
 
-*Note: On first startup, `01_init.sql` executes automatically to configure TimescaleDB hypertables and seed the 27 reservoir profiles.*
+*Note: On first startup, `01_init.sql` executes automatically to configure TimescaleDB hypertables and seed the 26 reservoir profiles.*
 
 4. Verify containers are running:
 ```bash
