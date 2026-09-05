@@ -367,7 +367,10 @@ def calculate_master_bite_score(
 @app.api_route("/about", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def get_methodology():
     try:
-        with open("methodology.html", "r") as f:
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, "methodology.html")
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
         return HTMLResponse(
             content=content,
@@ -803,76 +806,3 @@ def get_history(lake_code: str, response: Response, days: int = 7, target_date: 
 
 
 
-@app.get("/methodology", response_class=HTMLResponse)
-def get_methodology():
-    return """<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bite Score & Telemetry Methodology | OK Lakes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen p-4 sm:p-8">
-    <div class="max-w-3xl mx-auto space-y-6">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
-            <a href="/" class="flex items-center gap-2 text-sky-400 hover:text-sky-300 text-sm font-semibold transition">
-                &larr; Back to Live Dashboard
-            </a>
-            <span class="px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-400">v2.4 Telemetry Engine</span>
-        </div>
-
-        <div class="space-y-2">
-            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">Telemetry &amp; Bite Score Methodology</h1>
-            <p class="text-sm text-slate-400">How the Oklahoma Lakes Dashboard models feeding activity, hydrology, and fish positioning in real time.</p>
-        </div>
-
-        <div class="grid gap-6">
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <h2 class="text-base font-bold text-sky-400">1. Bite Score Algorithm (0–100 Scale)</h2>
-                <p class="text-xs text-slate-300 leading-relaxed">
-                    The aggregate bite score combines three core environmental inputs:
-                </p>
-                <ul class="text-xs text-slate-400 list-disc list-inside space-y-1">
-                    <li><strong>Barometric Pressure Trend (40% Weight):</strong> Rapid 3-hour drops trigger pre-frontal feeding; rising spikes (&gt;1020 hPa post-front) suppress active chases.</li>
-                    <li><strong>Solunar &amp; Lunar Alignment (35% Weight):</strong> Major feeding windows occur during Moon Overhead and Underfoot transits (&plusmn;90 min), amplified during New and Full Moon phases.</li>
-                    <li><strong>Water Stability &amp; Flow (25% Weight):</strong> Moderate steady inflows concentrate baitfish; severe muddy flood surges penalize visual sight-feeders.</li>
-                </ul>
-            </div>
-
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <h2 class="text-base font-bold text-cyan-400">2. Hydrology &amp; Inflow Telemetry</h2>
-                <p class="text-xs text-slate-300 leading-relaxed">
-                    Data is ingested continuously from dual upstream and downstream sensors:
-                </p>
-                <ul class="text-xs text-slate-400 list-disc list-inside space-y-1">
-                    <li><strong>USACE Tulsa District:</strong> Reservoir water surface elevation (ft), pool delta vs. conservation pool, and tailrace dam release (CFS).</li>
-                    <li><strong>USGS Water Services:</strong> Real-time tributary streamflow (CFS) from feeder river gages (e.g., Deep Fork River for Lake Arcadia).</li>
-                </ul>
-            </div>
-
-            <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <h2 class="text-base font-bold text-indigo-400">3. Tactical Engine &amp; Spawn Phase</h2>
-                <p class="text-xs text-slate-300 leading-relaxed">
-                    Recommendations evaluate water temperature bands, photoperiod, and water elevation deltas. In high pool conditions (+1.5 ft to +4 ft), tactical models prioritize flooded shoreline woody cover (buckbrush/willows) and secondary breaklines rather than false runoff warnings.
-                </p>
-            </div>
-        </div>
-
-        <div class="pt-6 border-t border-slate-800 text-center">
-            <a href="/" class="inline-flex items-center px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition">
-                Return to Dashboard
-            </a>
-        </div>
-    </div>
-</body>
-</html>"""
-
-OK_FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 58"><path d="M 2.0 2.0 L 95.8 2.0 L 95.8 9.9 L 97.7 27.4 L 97.7 55.4 L 91.3 52.8 L 82.4 51.2 L 71.2 54.4 L 65.6 55.7 L 57.8 49.6 L 48.9 48.1 L 42.2 43.3 L 35.5 40.9 L 35.5 9.9 L 2.0 9.9 Z" fill="#0284c7" stroke="#38bdf8" stroke-width="3" stroke-linejoin="round"/></svg>'
-
-@app.get("/favicon.ico", include_in_schema=False)
-@app.head("/favicon.ico", include_in_schema=False)
-@app.get("/favicon.svg", include_in_schema=False)
-@app.head("/favicon.svg", include_in_schema=False)
-def get_favicon():
-    return Response(content=OK_FAVICON_SVG, media_type="image/svg+xml")
