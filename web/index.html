@@ -301,10 +301,12 @@
                     </button>
 
                     <div id="lakeAlertPopover"
-                         class="hidden absolute right-0 top-full z-[120]
-                                mt-2 w-[28rem]
-                                max-w-[calc(100vw-1.5rem)]
-                                max-h-[70vh] overflow-y-auto
+                         class="hidden fixed left-2 right-2 top-[4.5rem] z-[120]
+                                w-auto max-w-none
+                                max-h-[calc(100dvh-5rem)] overflow-y-auto
+                                sm:absolute sm:left-auto sm:right-0 sm:top-full
+                                sm:mt-2 sm:w-[28rem] sm:max-w-[calc(100vw-1.5rem)]
+                                sm:max-h-[70vh]
                                 rounded-2xl
                                 border border-amber-500/30
                                 bg-slate-950 shadow-2xl">
