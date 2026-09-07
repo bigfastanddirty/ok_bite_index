@@ -176,6 +176,112 @@ def mark_source_success(cur, lake_code, source, when):
     """, (lake_code, source, when))
 
 
+def check_and_sync_active_projects():
+    """
+    Run the unified active-project scraper once per calendar day.
+
+    Scheduler state is stored in public.app_sync_state so container
+    restarts/rebuilds do not cause repeated runs.
+    """
+    conn = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.app_sync_state (
+                sync_name TEXT PRIMARY KEY,
+                last_run TIMESTAMPTZ NOT NULL
+            );
+        """)
+        conn.commit()
+
+        cur.execute("""
+            SELECT
+                date_trunc(
+                    'day',
+                    last_run AT TIME ZONE 'America/Chicago'
+                )
+                <
+                date_trunc(
+                    'day',
+                    NOW() AT TIME ZONE 'America/Chicago'
+                )
+            FROM public.app_sync_state
+            WHERE sync_name = 'active_projects';
+        """)
+
+        row = cur.fetchone()
+
+        # First run, or a new local calendar day.
+        should_run = (
+            row is None
+            or row[0] is True
+        )
+
+        cur.close()
+
+        if not should_run:
+            return
+
+        print(
+            "[Active Projects] Daily scheduler triggered. "
+            "Starting project synchronization...",
+            flush=True
+        )
+
+        result = subprocess.run(
+            [sys.executable, "/app/active_projects.py"],
+            check=False
+        )
+
+        if result.returncode != 0:
+            print(
+                f"[Active Projects] Sync failed with exit code "
+                f"{result.returncode}; last_run was NOT updated.",
+                flush=True
+            )
+            return
+
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO public.app_sync_state (
+                sync_name,
+                last_run
+            )
+            VALUES (
+                'active_projects',
+                NOW()
+            )
+            ON CONFLICT (sync_name)
+            DO UPDATE SET
+                last_run = EXCLUDED.last_run;
+        """)
+
+        conn.commit()
+        cur.close()
+
+        print(
+            "[Active Projects] Daily synchronization complete.",
+            flush=True
+        )
+
+    except Exception as exc:
+        print(
+            f"[Active Projects] Daily scheduler error: {exc}",
+            flush=True
+        )
+
+        if conn:
+            conn.rollback()
+
+    finally:
+        if conn:
+            conn.close()
+
+
 def run_sync():
     conn = get_db_connection()
     ensure_source_status_table(conn)
@@ -305,5 +411,6 @@ if __name__ == "__main__":
         run_sync()
         check_and_sync_odwc_regs()
         check_and_sync_odwc_species()
+        check_and_sync_active_projects()
         print("Waiting 15 minutes for next scheduled cycle...")
         time.sleep(900)
