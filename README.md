@@ -211,8 +211,6 @@ TZ=America/Chicago
 DOCKER_ROOT=<Data Location>
 ```
 
-Do not commit the populated `.env` file to Git.
-
 ## Deployment
 
 Build and start the complete stack:
