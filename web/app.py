@@ -319,15 +319,21 @@ def calculate_master_bite_score(
     elif dp_val >= 0.6:
         score -= 10.0
 
-    # 2. Wind Chop
-    if 5.0 <= w_val <= 13.0:
+    # 2. Wind Chop - Oklahoma reservoir calibration
+    if w_val < 3.0:
+        score -= 6.0
+    elif w_val < 6.0:
+        score += 2.0
+    elif w_val < 12.0:
+        score += 10.0
+    elif w_val < 18.0:
         score += 12.0
-    elif 13.0 < w_val <= 18.0:
+    elif w_val < 23.0:
         score += 6.0
-    elif w_val < 4.0:
-        score -= 8.0
+    elif w_val < 28.0:
+        score -= 4.0
     else:
-        score -= 14.0
+        score -= 12.0
 
     # 3. Cloud Cover
     if c_val >= 65.0:
@@ -428,14 +434,20 @@ def calculate_bite_score_breakdown(
     else:
         add("Pressure trend", -10, "Rising pressure")
 
-    if 5.0 <= wind <= 13.0:
-        add("Wind", 12, "Productive surface chop")
-    elif 13.0 < wind <= 18.0:
-        add("Wind", 6, "Strong but workable wind")
-    elif wind < 4.0:
-        add("Wind", -8, "Little surface disturbance")
+    if wind < 3.0:
+        add("Wind", -6, "Very light wind / slick conditions")
+    elif wind < 6.0:
+        add("Wind", 2, "Light chop")
+    elif wind < 12.0:
+        add("Wind", 10, "Productive surface chop")
+    elif wind < 18.0:
+        add("Wind", 12, "Strong Oklahoma reservoir feeding chop")
+    elif wind < 23.0:
+        add("Wind", 6, "Strong but still productive wind")
+    elif wind < 28.0:
+        add("Wind", -4, "Difficult boat control and wave exposure")
     else:
-        add("Wind", -14, "Excessive wind")
+        add("Wind", -12, "Excessive wind / poor fishability")
 
     if clouds >= 65:
         add("Cloud cover", 8, "Low-light conditions")
