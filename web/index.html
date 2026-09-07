@@ -263,6 +263,102 @@
                     <span class="hidden sm:inline">Methodology</span>
                 </a>
 
+                <!-- Lake Project / Access Alert -->
+                <div id="lakeAlertCard"
+                     class="hidden relative flex-shrink-0">
+
+                    <button id="lakeAlertButton"
+                            type="button"
+                            title="Lake project notices"
+                            aria-label="Lake project notices"
+                            aria-expanded="false"
+                            class="relative p-1.5 sm:p-2 rounded-xl
+                                   bg-amber-500/10 hover:bg-amber-500/20
+                                   text-amber-400 border border-amber-500/30
+                                   transition">
+
+                        <svg viewBox="0 0 24 24"
+                             class="w-3.5 h-3.5 sm:w-4 sm:h-4"
+                             fill="none"
+                             stroke="currentColor"
+                             stroke-width="2"
+                             stroke-linecap="round"
+                             stroke-linejoin="round">
+                            <path d="M12 9v4"/>
+                            <path d="M12 17h.01"/>
+                            <path d="M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/>
+                        </svg>
+
+                        <span id="lakeAlertCount"
+                              class="absolute -top-2 -right-2
+                                     min-w-[18px] h-[18px] px-1
+                                     rounded-full bg-amber-400
+                                     border-2 border-slate-900
+                                     text-[9px] font-black text-slate-950
+                                     flex items-center justify-center">
+                            0
+                        </span>
+                    </button>
+
+                    <div id="lakeAlertPopover"
+                         class="hidden absolute right-0 top-full z-[120]
+                                mt-2 w-[28rem]
+                                max-w-[calc(100vw-1.5rem)]
+                                max-h-[70vh] overflow-y-auto
+                                rounded-2xl
+                                border border-amber-500/30
+                                bg-slate-950 shadow-2xl">
+
+                        <div class="sticky top-0 z-10
+                                    px-4 py-3
+                                    bg-slate-950
+                                    border-b border-slate-800">
+
+                            <div class="flex items-center justify-between gap-3">
+
+                                <div>
+                                    <span class="text-[9px] xl:text-xs
+                                                 uppercase tracking-widest
+                                                 text-amber-400 font-black">
+                                        Lake Projects
+                                    </span>
+
+
+                                </div>
+
+                                <button id="lakeAlertClose"
+                                        type="button"
+                                        aria-label="Close project notices"
+                                        class="text-slate-500
+                                               hover:text-slate-300">
+                                    <svg viewBox="0 0 24 24"
+                                         class="w-4 h-4"
+                                         fill="none"
+                                         stroke="currentColor"
+                                         stroke-width="2">
+                                        <path d="M6 6l12 12M18 6 6 18"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="lakeAlertList"
+                             class="divide-y divide-slate-800">
+                        </div>
+
+                        <div class="px-4 py-3 border-t border-slate-800">
+                            <a id="lakeAlertSourceLink"
+                               href="https://storymaps.arcgis.com/stories/7d9d0a7285f5458eb9f3ea955e5ec42d"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="text-xs font-semibold
+                                      text-amber-300 hover:text-amber-200">
+                                View Edmond current projects map ↗
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
                 <button id="refreshBtn" onclick="loadSelectedLakeData()" title="Refresh telemetry" class="p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition flex-shrink-0">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                 </button>
@@ -648,6 +744,9 @@
                 const res = await fetch(`/api/lakes/${currentLake}/analysis?${cacheBust}`);
                 latestAnalysis = await res.json();
                 updateOverviewUI(latestAnalysis);
+
+                // Load any active lake-specific construction/access alerts.
+                loadLakeAlerts(currentLake);
             } catch (e) {
                 console.error("Error loading lake analysis:", e);
             }
@@ -1760,6 +1859,331 @@ function updateOverviewUI(data) {
                 if (trigger) trigger.setAttribute('aria-expanded', 'false');
             });
         }
+
+
+        async function loadLakeAlerts(lakeCode) {
+            const wrapper = document.getElementById('lakeAlertCard');
+            const countEl = document.getElementById('lakeAlertCount');
+            const headingEl = document.getElementById('lakeAlertHeading');
+            const listEl = document.getElementById('lakeAlertList');
+
+            if (!wrapper || !lakeCode || !listEl) {
+                return;
+            }
+
+            wrapper.classList.add('hidden');
+            listEl.innerHTML = '';
+
+            try {
+                const response = await fetch(
+                    `/api/lakes/${encodeURIComponent(lakeCode)}/alerts?_t=${Date.now()}`
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Lake alerts returned HTTP ${response.status}`
+                    );
+                }
+
+                const alerts = await response.json();
+
+                if (!Array.isArray(alerts) || alerts.length === 0) {
+                    wrapper.classList.add('hidden');
+                    return;
+                }
+
+                if (countEl) {
+                    countEl.textContent = alerts.length;
+                }
+
+                const escapeHtml = value => {
+                    const div = document.createElement('div');
+                    div.textContent = value || '';
+                    return div.innerHTML;
+                };
+
+                const formatDate = value => {
+                    if (!value) return '--';
+
+                    const dt = new Date(value);
+
+                    if (Number.isNaN(dt.getTime())) {
+                        return '--';
+                    }
+
+                    return dt.toLocaleDateString([], {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+                };
+
+                listEl.innerHTML = alerts.map((alert, index) => {
+
+                    const title = escapeHtml(
+                        alert.project_name ||
+                        alert.project_key ||
+                        'Lake Project'
+                    );
+
+                    const completion = escapeHtml(
+                        alert.anticipated_completion || ''
+                    );
+
+                    const update = escapeHtml(
+                        alert.update_text ||
+                        alert.summary ||
+                        'No current project update provided.'
+                    );
+
+                    const cost = escapeHtml(
+                        alert.cost || ''
+                    );
+
+                    const updated = formatDate(
+                        alert.source_modified ||
+                        alert.changed_at
+                    );
+
+                    const sourceUrl = escapeHtml(
+                        alert.source_url || ''
+                    );
+
+                    return `
+                        <div class="lake-project-item">
+
+                            <button type="button"
+                                    class="lake-project-toggle
+                                           w-full px-4 py-3
+                                           flex items-center justify-between
+                                           gap-3 text-left
+                                           hover:bg-slate-900/70
+                                           transition"
+                                    aria-expanded="false">
+
+                                <div class="min-w-0 flex-1">
+
+                                    <div class="text-sm xl:text-base
+                                                font-bold text-white
+                                                leading-snug">
+                                        ${title}
+                                    </div>
+
+                                    ${completion ? `
+                                        <div class="mt-1
+                                                    text-[9px] xl:text-xs
+                                                    font-mono text-slate-500">
+                                            Expected completion:
+                                            <span class="text-slate-300">
+                                                ${completion}
+                                            </span>
+                                        </div>
+                                    ` : ''}
+
+                                </div>
+
+                                <svg class="lake-project-chevron
+                                            w-4 h-4 flex-shrink-0
+                                            text-slate-500
+                                            transition-transform duration-200"
+                                     viewBox="0 0 24 24"
+                                     fill="none"
+                                     stroke="currentColor"
+                                     stroke-width="2"
+                                     stroke-linecap="round"
+                                     stroke-linejoin="round">
+                                    <path d="m6 9 6 6 6-6"/>
+                                </svg>
+
+                            </button>
+
+                            <div class="lake-project-details hidden
+                                        px-4 pb-4">
+
+                                <div class="pt-1
+                                            border-t border-slate-800/70">
+
+                                    <p class="mt-3
+                                              text-xs xl:text-sm
+                                              leading-relaxed
+                                              text-slate-300">
+                                        ${update}
+                                    </p>
+
+                                    <div class="mt-3
+                                                flex flex-wrap
+                                                items-center gap-x-4 gap-y-2
+                                                text-[9px] xl:text-xs
+                                                font-mono text-slate-500">
+
+                                        ${cost ? `
+                                            <span>
+                                                Cost:
+                                                <span class="text-slate-300">
+                                                    ${cost}
+                                                </span>
+                                            </span>
+                                        ` : ''}
+
+                                        <span>
+                                            Updated:
+                                            <span class="text-slate-300">
+                                                ${updated}
+                                            </span>
+                                        </span>
+
+                                    </div>
+
+                                    ${sourceUrl ? `
+                                        <div class="mt-3">
+                                            <a href="${sourceUrl}"
+                                               target="_blank"
+                                               rel="noopener noreferrer"
+                                               class="inline-flex items-center gap-1
+                                                      text-xs font-semibold
+                                                      text-amber-300
+                                                      hover:text-amber-200">
+                                                View official project source
+                                                <span aria-hidden="true">↗</span>
+                                            </a>
+                                        </div>
+                                    ` : ''}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+                    `;
+                }).join('');
+
+                // Accordion behavior:
+                // only one project can be expanded at a time.
+                listEl.querySelectorAll('.lake-project-toggle').forEach(toggle => {
+
+                    toggle.addEventListener('click', () => {
+
+                        const item = toggle.closest('.lake-project-item');
+                        const details = item?.querySelector('.lake-project-details');
+                        const chevron = item?.querySelector('.lake-project-chevron');
+
+                        if (!item || !details) return;
+
+                        const opening = details.classList.contains('hidden');
+
+                        // Collapse every project first.
+                        listEl.querySelectorAll('.lake-project-item').forEach(otherItem => {
+
+                            const otherDetails =
+                                otherItem.querySelector('.lake-project-details');
+
+                            const otherToggle =
+                                otherItem.querySelector('.lake-project-toggle');
+
+                            const otherChevron =
+                                otherItem.querySelector('.lake-project-chevron');
+
+                            if (otherDetails) {
+                                otherDetails.classList.add('hidden');
+                            }
+
+                            if (otherToggle) {
+                                otherToggle.setAttribute(
+                                    'aria-expanded',
+                                    'false'
+                                );
+                            }
+
+                            if (otherChevron) {
+                                otherChevron.classList.remove('rotate-180');
+                            }
+                        });
+
+                        // Re-open clicked project if it was closed.
+                        if (opening) {
+                            details.classList.remove('hidden');
+                            toggle.setAttribute('aria-expanded', 'true');
+
+                            if (chevron) {
+                                chevron.classList.add('rotate-180');
+                            }
+                        }
+
+                    });
+
+                });
+
+                wrapper.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(
+                    'Lake project alert load failed:',
+                    err
+                );
+
+                wrapper.classList.add('hidden');
+            }
+        }
+
+
+
+        // ---------------------------------------------------------
+        // Header lake-alert popover
+        // ---------------------------------------------------------
+
+        function closeLakeAlertPopover() {
+            const popover = document.getElementById('lakeAlertPopover');
+            const button = document.getElementById('lakeAlertButton');
+
+            if (popover) {
+                popover.classList.add('hidden');
+            }
+
+            if (button) {
+                button.setAttribute('aria-expanded', 'false');
+            }
+        }
+
+        document.addEventListener('click', event => {
+            const button = event.target.closest('#lakeAlertButton');
+            const popover = document.getElementById('lakeAlertPopover');
+            const wrapper = document.getElementById('lakeAlertCard');
+
+            if (button && popover) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const opening = popover.classList.contains('hidden');
+
+                popover.classList.toggle('hidden', !opening);
+                button.setAttribute(
+                    'aria-expanded',
+                    opening ? 'true' : 'false'
+                );
+
+                return;
+            }
+
+            if (event.target.closest('#lakeAlertClose')) {
+                event.preventDefault();
+                event.stopPropagation();
+                closeLakeAlertPopover();
+                return;
+            }
+
+            if (
+                wrapper &&
+                !wrapper.contains(event.target)
+            ) {
+                closeLakeAlertPopover();
+            }
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeLakeAlertPopover();
+            }
+        });
 
 </script>
 </body>
