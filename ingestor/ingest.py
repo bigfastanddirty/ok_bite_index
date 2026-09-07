@@ -1,4 +1,4 @@
-from odwc_regs import check_and_sync_odwc_regs
+from odwc_regs import sync_odwc_regs
 import re
 
 def fetch_usace_bulletin_release(lake_code):
@@ -44,6 +44,102 @@ def get_db_connection():
             print(f"[{attempt}/10] Waiting for DB... ({e})")
             time.sleep(3)
     raise Exception("DB unreachable.")
+
+
+def check_and_sync_odwc_regs():
+    """
+    Run the ODWC regulations scraper no more than once every 7 days.
+
+    Scheduler state is stored in PostgreSQL so container restarts/rebuilds
+    do not reset the interval.
+    """
+    conn = None
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.app_sync_state (
+                sync_name TEXT PRIMARY KEY,
+                last_run TIMESTAMPTZ NOT NULL
+            );
+        """)
+        conn.commit()
+
+        cur.execute("""
+            SELECT last_run
+            FROM public.app_sync_state
+            WHERE sync_name = 'odwc_regulations';
+        """)
+        row = cur.fetchone()
+
+        # First scheduler run after migration:
+        # mark the current interval complete rather than scraping immediately.
+        if row is None:
+            cur.execute("""
+                INSERT INTO public.app_sync_state (sync_name, last_run)
+                VALUES ('odwc_regulations', NOW());
+            """)
+            conn.commit()
+            cur.close()
+
+            print(
+                "[ODWC Regulations] Weekly scheduler initialized; "
+                "current interval marked complete.",
+                flush=True
+            )
+            return
+
+        last_run = row[0]
+
+        cur.execute("""
+            SELECT NOW() >= %s + INTERVAL '7 days';
+        """, (last_run,))
+
+        should_run = cur.fetchone()[0]
+        cur.close()
+
+        if not should_run:
+            return
+
+        print(
+            "[ODWC Regulations] 7-day interval triggered. "
+            "Starting regulations synchronization...",
+            flush=True
+        )
+
+        sync_odwc_regs(conn)
+
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO public.app_sync_state (sync_name, last_run)
+            VALUES ('odwc_regulations', NOW())
+            ON CONFLICT (sync_name)
+            DO UPDATE SET last_run = EXCLUDED.last_run;
+        """)
+
+        conn.commit()
+        cur.close()
+
+        print(
+            "[ODWC Regulations] Weekly synchronization completed successfully.",
+            flush=True
+        )
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print(
+            f"[ODWC Regulations] Weekly scheduler error: {e}",
+            flush=True
+        )
+
+    finally:
+        if conn:
+            conn.close()
 
 
 def check_and_sync_odwc_species():
