@@ -5,12 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scoring Methodology | OK Bite Index</title>
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /*
+         * Responsive typography matching the main dashboard.
+         *
+         * Mobile/tablet remain close to existing sizes.
+         * Desktop typography grows gradually with viewport width.
+         * Ultrawide growth is capped at 18px root size.
+         */
+
+        html {
+            font-size: clamp(14px, 0.72vw, 18px);
+        }
+
+        @media (min-width: 1280px) {
+            .text-\[10px\] {
+                font-size: clamp(10px, 0.56vw, 13px) !important;
+            }
+
+            .text-\[11px\] {
+                font-size: clamp(11px, 0.60vw, 14px) !important;
+            }
+        }
+
+        @media (min-width: 2200px) {
+            html {
+                font-size: 18px;
+            }
+        }
+    </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-500 selection:text-white">
 
     <!-- Header -->
     <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="w-[96%] max-w-[2200px] mx-auto px-2.5 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <a href="/" class="p-1 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shadow-inner hover:border-slate-700 transition">
                     <svg viewBox="0 0 100 58" class="w-8 h-5 text-sky-400 fill-sky-400/20 stroke-sky-400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
@@ -29,7 +59,7 @@
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+    <main class="w-[96%] max-w-[2200px] mx-auto px-2 sm:px-4 md:px-5 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 lg:space-y-10">
 
         <!-- 1. Live Bite Score Methodology -->
         <section class="space-y-6">
