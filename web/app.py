@@ -604,6 +604,17 @@ def get_index():
         }
     )
 
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    from fastapi.responses import PlainTextResponse
+
+    content = """User-agent: *
+Allow: /
+"""
+
+    return PlainTextResponse(content)
+
+
 @app.get("/api/lakes")
 def get_lakes(response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
