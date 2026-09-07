@@ -1492,6 +1492,61 @@ def get_lake_analysis(lake_code: str, response: Response):
         row["source_freshness"] = get_source_freshness(lake_code, row.get("timestamp"))
     return row
 
+@app.get("/api/lakes/{lake_code}/alerts")
+def get_lake_alerts(lake_code: str):
+    """
+    Return active project/access alerts for a lake.
+
+    Alerts are populated by external project/news ingestors such as
+    arcadia_projects.py.
+    """
+    conn = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("""
+            SELECT
+                project_key,
+                project_name,
+                source_name,
+                source_url,
+                summary,
+                status,
+                source_modified,
+                first_seen,
+                last_seen,
+                changed_at,
+                is_active
+            FROM lake_project_alerts
+            WHERE lake_code = %s
+              AND is_active = TRUE
+            ORDER BY changed_at DESC;
+        """, (lake_code.upper(),))
+
+        return [dict(row) for row in cur.fetchall()]
+
+    except psycopg2.errors.UndefinedTable:
+        # Alert ingestion has not been initialized yet.
+        if conn:
+            conn.rollback()
+        return []
+
+    except Exception as exc:
+        print(
+            f"[Lake Alerts] Error loading alerts for {lake_code}: {exc}",
+            flush=True
+        )
+        if conn:
+            conn.rollback()
+        return []
+
+    finally:
+        if conn:
+            conn.close()
+
+
 @app.get("/api/lakes/{lake_code}/forecast")
 def get_lake_forecast(lake_code: str, response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
