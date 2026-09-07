@@ -1006,7 +1006,7 @@ def build_recommended_tactic(
 ):
     """
     Build a concise, actionable tactic:
-    - top 2 ranked species
+    - top 3 ranked species
     - one key environmental adjustment
     """
     if not ranked_species:
@@ -1081,7 +1081,7 @@ def build_recommended_tactic(
     }
 
     top_parts = []
-    for species in ranked_species[:2]:
+    for species in ranked_species[:3]:
         fam = _species_family(species)
         instruction = profiles.get(fam, profiles["other"])
         display_species = format_species_name(species)
@@ -1111,10 +1111,32 @@ def build_recommended_tactic(
     elif wind < 4:
         adjustment = "With little surface chop, slow down and emphasize shade, depth, and isolated cover."
 
-    if adjustment:
-        return " ".join(top_parts + [adjustment])
+    # Always provide a Lake Pattern.
+    # water_temp_f already represents the best available value:
+    # measured telemetry when present, estimated temperature otherwise.
+    if adjustment is None:
+        if wt >= 80:
+            adjustment = (
+                "Warm water favors early and late activity, with fish relating "
+                "to shade, deeper structure, and nearby depth transitions during brighter periods."
+            )
+        elif 65 <= wt < 80:
+            adjustment = (
+                "Moderate water temperatures support active feeding around structure, "
+                "forage concentrations, points, and depth transitions."
+            )
+        elif 50 <= wt < 65:
+            adjustment = (
+                "Cooler water favors slower presentations around structure, channel edges, "
+                "and areas holding concentrated forage."
+            )
+        else:
+            adjustment = (
+                "Cold-water conditions favor slower presentations around deeper structure, "
+                "channel edges, and concentrated forage."
+            )
 
-    return " ".join(top_parts)
+    return " ".join(top_parts + [adjustment])
 
 
 
