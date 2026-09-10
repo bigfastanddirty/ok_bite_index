@@ -41,13 +41,12 @@ USGS monitoring stations provide available hydrological and water-quality observ
 - Discharge / flow
 - Water temperature
 - Dissolved oxygen
-- Turbidity
 
 Available parameters vary by lake and monitoring station.
 
 ### USACE
 
-USACE data is used where available for reservoir and dam operational information, including outlet discharge.
+USACE CWMS data is used for configured reservoirs where available, including reservoir elevation, reference levels, inflow, and release.
 
 ### Open-Meteo
 
@@ -274,7 +273,7 @@ python -u ingest.py
 | `active_projects.py` | Arcadia related-project discovery and synchronization |
 | `odwc_regs.py` | ODWC fishing-regulation scraping and database synchronization |
 | `odwc_species.py` | ODWC lake-species synchronization |
-| `backfill_weather.py` | Historical weather backfill utility |
+| `backfill.py` | Unified historical recovery utility for lake levels, flows, measured Hefner water temperature, and weather |
 
 Standalone synchronization scripts can also be run manually inside the container.
 
@@ -294,8 +293,8 @@ The main `ingest.py` daemon wakes every **15 minutes**. Telemetry is collected e
 Each telemetry cycle retrieves available:
 
 - Open-Meteo current weather
-- USGS lake and water-quality observations
-- USACE reservoir-release information
+- USGS reservoir observations for Hefner, including elevation and measured water temperature
+- USACE CWMS reservoir elevation, reference-level, inflow, and release observations
 
 A new lake reading is then stored in TimescaleDB.
 
@@ -321,14 +320,42 @@ Related-project discovery currently processes **Arcadia Lake only**.
 
 Scheduler timestamps are updated only after successful synchronization, allowing failed jobs to be retried by a later daemon cycle.
 
-## Historical Weather Backfill
+## Historical Backfill
 
-Historical weather data can be populated with:
+Historical lake readings can be reconstructed or repaired with the unified `backfill.py` utility. The script supports lake elevation and normal-pool deviation, CWMS inflow and release, Hefner USGS reservoir elevation and measured water temperature, and historical Open-Meteo weather. Estimated water temperature is not persisted by the backfill.
+
+Run all supported backfills in dependency order (**levels → flows → weather**):
 
 ```bash
 docker compose --env-file .env exec ingestor \
-  python /app/backfill_weather.py
+  python -u /app/backfill.py --all --days 60
 ```
+
+Run an individual stage:
+
+```bash
+docker compose --env-file .env exec ingestor \
+  python -u /app/backfill.py --levels --days 60
+
+docker compose --env-file .env exec ingestor \
+  python -u /app/backfill.py --flows --days 60
+
+docker compose --env-file .env exec ingestor \
+  python -u /app/backfill.py --weather --days 60
+```
+
+Restrict a backfill to a lake with `--lake` (repeatable), or specify an explicit historical range with `--start` and `--end`. Use `--dry-run` to retrieve and validate source data without modifying `lake_readings`.
+
+For example:
+
+```bash
+docker compose --env-file .env exec ingestor \
+  python -u /app/backfill.py --all --lake ARCA --days 2 --dry-run
+```
+
+For Hefner (`HEFN`), the level stage uses USGS station `07159550` and backfills both reservoir elevation and measured reservoir water temperature when available. Other configured reservoirs use the current CWMS lake mapping and reference-level logic shared with the main ingestor.
+
+The backfill uses authoritative observations when available and does not fabricate missing boundary-hour telemetry. Consequently, the newest hour can temporarily have weather or elevation data while a completed hourly flow or USGS observation is not yet available.
 
 ## Web Interface
 
@@ -361,7 +388,6 @@ GET /api/lakes
 GET /api/lakes/{lake_code}/analysis
 GET /api/lakes/{lake_code}/forecast
 GET /api/lakes/{lake_code}/history
-GET /api/lakes/{lake_code}/alerts
 ```
 
 ### Lake List
@@ -395,16 +421,6 @@ GET /api/lakes/{lake_code}/history
 ```
 
 Returns historical lake observations.
-
-### Related Projects
-
-```text
-GET /api/lakes/{lake_code}/alerts
-```
-
-Returns active related-project information for the requested lake.
-
-At present, related-project ingestion populates project information only for **Arcadia Lake (`ARCA`)**.
 
 ## Development
 
