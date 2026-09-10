@@ -661,6 +661,7 @@
                 <div class="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
                     <button id="btn7d" onclick="setChartRange(7)" class="px-3 py-1 rounded-lg text-xs xl:text-sm 2xl:text-base font-semibold bg-blue-600 text-white transition">7D</button>
                     <button id="btn30d" onclick="setChartRange(30)" class="px-3 py-1 rounded-lg text-xs xl:text-sm 2xl:text-base font-semibold text-slate-400 hover:text-white transition">30D</button>
+                    <button id="btn60d" onclick="setChartRange(60)" class="px-3 py-1 rounded-lg text-xs xl:text-sm 2xl:text-base font-semibold text-slate-400 hover:text-white transition">60D</button>
                     <button id="btn90d" onclick="setChartRange(90)" class="px-3 py-1 rounded-lg text-xs xl:text-sm 2xl:text-base font-semibold text-slate-400 hover:text-white transition">90D</button>
                 </div>
             </div>
@@ -1873,7 +1874,7 @@ function updateOverviewUI(data) {
 
         function setChartRange(days) {
             chartDays = days;
-            ['btn7d', 'btn30d', 'btn90d'].forEach(id => {
+            ['btn7d', 'btn30d', 'btn60d', 'btn90d'].forEach(id => {
                 const btn = document.getElementById(id);
                 if (btn) btn.className = "px-3 py-1 rounded-lg text-xs xl:text-sm 2xl:text-base font-semibold text-slate-400 hover:text-white transition";
             });
