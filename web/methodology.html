@@ -35,7 +35,48 @@
                 font-size: 18px;
             }
         }
-    </style>
+    
+        /* Dynamic methodology card typography */
+        .score-card {
+            font-size: clamp(0.78rem, 0.62vw, 1.02rem);
+        }
+
+        .score-card h3 {
+            font-size: clamp(0.95rem, 0.78vw, 1.25rem);
+            line-height: 1.25;
+        }
+
+        .score-card .score-label {
+            font-size: clamp(0.66rem, 0.50vw, 0.82rem);
+        }
+
+        .score-card .score-badge {
+            font-size: clamp(0.66rem, 0.50vw, 0.82rem);
+        }
+
+        .score-card ul,
+        .score-card p {
+            font-size: clamp(0.76rem, 0.60vw, 0.98rem);
+            line-height: 1.45;
+        }
+
+        .score-card .score-subhead {
+            font-size: clamp(0.68rem, 0.52vw, 0.86rem);
+        }
+
+        @media (min-width: 1800px) {
+            .score-card {
+                padding: 1.65rem;
+            }
+        }
+
+        @media (min-width: 2400px) {
+            .score-card {
+                padding: 1.9rem;
+            }
+        }
+
+</style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-blue-500 selection:text-white">
 
@@ -99,10 +140,10 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                 <!-- Pressure -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-purple-400 uppercase tracking-wider">Pressure Trend</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">-22 to +25 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-purple-400 uppercase tracking-wider">Pressure Trend</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">-22 to +25 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">1. Barometric Rate of Change</h3>
                     <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
@@ -118,10 +159,10 @@
                 </div>
 
                 <!-- Wind -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-sky-400 uppercase tracking-wider">Wind Chop</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">-14 to +12 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-sky-400 uppercase tracking-wider">Wind Chop</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">-14 to +12 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">2. Wind Speed</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
@@ -139,10 +180,10 @@
                 </div>
 
                 <!-- Clouds -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">Cloud Cover</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-500/10 text-slate-300 border border-slate-500/20">-4 to +8 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-slate-300 uppercase tracking-wider">Cloud Cover</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-slate-500/10 text-slate-300 border border-slate-500/20">-4 to +8 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">3. Light Attenuation</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
@@ -153,10 +194,10 @@
                 </div>
 
                 <!-- Time of day -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Time of Day</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">-10 to +15 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-amber-400 uppercase tracking-wider">Time of Day</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">-10 to +15 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">4. Diurnal Feeding Window</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
@@ -166,14 +207,14 @@
                         <li>&bull; <span class="text-cyan-400">10:00 PM–4:30 AM:</span> +5</li>
                         <li>&bull; Other periods: 0</li>
                     </ul>
-                    <p class="text-xs text-slate-500">Current implementation evaluates Central Daylight Time.</p>
+                    <p class="text-xs text-slate-500">Current implementation evaluates Central Time (America/Chicago), automatically handling CST/CDT transitions.</p>
                 </div>
 
                 <!-- Solunar -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-indigo-400 uppercase tracking-wider">Solunar</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">0 to +22 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-indigo-400 uppercase tracking-wider">Solunar</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">0 to +22 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">5. Lunar Transit &amp; Phase</h3>
                     <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
@@ -188,10 +229,10 @@
                 </div>
 
                 <!-- Water temp -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Water Temperature</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">-15 to +15 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Water Temperature</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">-15 to +15 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">6. Metabolic Temperature Factor</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
@@ -206,26 +247,26 @@
                         When measured water temperature is unavailable, the site's estimated value is used and flagged in the dashboard.
                     </p>
                 </div>
-
-                <!-- Hydrology -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                <!-- Dam Flow -->
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Hydrology</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">-6 to +9 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-emerald-400 uppercase tracking-wider">Dam Flow</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">0 to +5 pts</span>
                     </div>
-                    <h3 class="font-bold text-base text-white">7–8. Dam Flow &amp; Pool Movement</h3>
+
+                    <h3 class="font-bold text-base text-white">7. Dam Release</h3>
+
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
                         <li>&bull; Release &gt;100 CFS: <span class="text-emerald-400">+5</span></li>
-                        <li>&bull; 24h level rise +0.10 to +0.50 ft: <span class="text-emerald-400">+4</span></li>
-                        <li>&bull; 24h level drop &lt;-0.30 ft: <span class="text-rose-400">-6</span></li>
+                        <li>&bull; Release &le;100 CFS: <span class="text-slate-400">0</span></li>
                     </ul>
                 </div>
 
-                <!-- Precip -->
-                <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+<!-- Precip -->
+                <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                     <div class="flex justify-between items-center gap-3">
-                        <span class="text-xs font-bold font-mono text-blue-400 uppercase tracking-wider">Precipitation</span>
-                        <span class="text-xs font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">-12 to +7 pts</span>
+                        <span class="score-label text-xs font-bold font-mono text-blue-400 uppercase tracking-wider">Precipitation</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">-12 to +7 pts</span>
                     </div>
                     <h3 class="font-bold text-base text-white">9. Rain / Runoff Modifier</h3>
                     <ul class="text-xs font-mono space-y-1 text-slate-300">
@@ -235,28 +276,182 @@
                         <li>&bull; Other amounts: 0</li>
                     </ul>
                 </div>
+
+<!-- Lake Level -->
+                <div class="sm:col-span-2 bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center gap-3">
+                        <span class="score-label text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider">Lake Level</span>
+                        <span class="score-badge text-xs font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">-12 to +6 pts</span>
+                    </div>
+
+                    <h3 class="font-bold text-base text-white">8. Pool Level &amp; 24h Trend</h3>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div>
+                            <div class="score-subhead text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">
+                                Pool vs. Normal
+                            </div>
+
+                            <ul class="text-xs font-mono space-y-1 text-slate-300">
+                                <li>&bull; Within &plusmn;1 ft: <span class="text-emerald-400">+3</span></li>
+                                <li>&bull; 1&ndash;2 ft below: <span class="text-emerald-400">+1</span></li>
+                                <li>&bull; 2&ndash;4 ft below: <span class="text-rose-300">-3</span></li>
+                                <li>&bull; 4&ndash;7 ft below: <span class="text-rose-400">-7</span></li>
+                                <li>&bull; &gt;7 ft below: <span class="text-rose-400">-10</span></li>
+                                <li>&bull; 1&ndash;2 ft above: <span class="text-emerald-400">+1</span></li>
+                                <li>&bull; 2&ndash;4 ft above: <span class="text-emerald-400">+2</span></li>
+                                <li>&bull; &gt;4 ft above: <span class="text-rose-300">-2</span></li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <div class="score-subhead text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">
+                                24h Trend
+                            </div>
+
+                            <ul class="text-xs font-mono space-y-1 text-slate-300">
+                                <li>&bull; Stable &plusmn;0.10 ft: <span class="text-emerald-400">up to +3</span></li>
+                                <li>&bull; Rise 0.10&ndash;0.75 ft: <span class="text-emerald-400">+2</span></li>
+                                <li>&bull; Rise &gt;0.75 ft: <span class="text-rose-300">-2</span></li>
+                                <li>&bull; Fall 0.10&ndash;0.50 ft: <span class="text-rose-300">-1</span></li>
+                                <li>&bull; Fall &gt;0.50 ft: <span class="text-rose-400">-4</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-slate-500 leading-relaxed">
+                        Stable-water bonus is limited to <strong class="text-slate-300">+2</strong>
+                        at 2&ndash;4 ft below normal and <strong class="text-slate-300">+1</strong>
+                        beyond 4 ft below normal.
+                    </p>
+
+                    <div class="pt-3 border-t border-slate-800 space-y-2">
+                        <div class="text-[10px] uppercase tracking-wider text-rose-400 font-bold">
+                            Severe Drawdown Score Ceiling
+                        </div>
+
+                        <ul class="text-xs font-mono space-y-1 text-slate-300">
+                            <li>
+                                &bull; 4&ndash;7 ft below:
+                                <span class="text-amber-400">max score 64</span>
+                            </li>
+                            <li>
+                                &bull; 7&ndash;10 ft below:
+                                <span class="text-rose-400">max score 44</span>
+                            </li>
+                            <li>
+                                &bull; &gt;10 ft below:
+                                <span class="text-rose-400">max score 34</span>
+                            </li>
+                        </ul>
+
+                        <p class="text-xs text-slate-500 leading-relaxed">
+                            Severe drawdown acts as a final score ceiling after
+                            all weather, solunar, temperature, flow and other
+                            modifiers are evaluated. This prevents favorable
+                            short-term conditions from masking severely
+                            abnormal reservoir conditions.
+                        </p>
+                    </div>
+                </div>
+
             </div>
 
-            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
+            <div class="score-card bg-slate-900 border border-slate-800/90 rounded-2xl p-6 shadow-xl space-y-3">
                 <h3 class="font-bold text-base text-white">Score Assembly</h3>
                 <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-300 overflow-x-auto">
-                    Final Bite Score = clamp(35 + Pressure + Wind + Clouds + Time + Solunar + Water Temp + Flow + Pool Trend + Rain, 5, 100)
+                    Final Bite Score = clamp(35 + Pressure + Wind + Clouds + Time + Solunar + Water Temp + Flow + Lake Level + Rain, 5, 100)
                 </div>
                 <p class="text-xs text-slate-500 leading-relaxed">
-                    The factors are additive modifiers, not percentage weights. A strong positive condition can offset a negative condition,
-                    while the final clamp prevents scores below 5 or above 100.
+                    The factors are additive modifiers, not percentage weights. A strong positive condition can offset a negative condition.
+                    The normal score is clamped between 5 and 100; however, severe reservoir drawdown can impose a lower
+                    maximum score after all other modifiers are evaluated.
                 </p>
             </div>
+        </section>
+
+        <!-- Baseline Summary -->
+        <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+            <div>
+                <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">
+                    Score Baselines
+                </h2>
+
+                <p class="text-xs sm:text-sm text-slate-400 leading-relaxed mt-2">
+                    OK Bite Index uses two separate additive scoring systems.
+                    Each starts from a neutral baseline, then current environmental
+                    conditions add or subtract points.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-bold text-sky-400 font-mono">
+                            Overall Bite Index
+                        </span>
+
+                        <span class="text-xs font-black text-white font-mono">
+                            Base 35
+                        </span>
+                    </div>
+
+                    <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+                        Every lake-wide Bite Score begins at
+                        <strong class="text-slate-200">35 points</strong>.
+                        Pressure, wind, cloud cover, time of day, solunar conditions,
+                        water temperature, dam flow, lake level, and precipitation
+                        then modify that baseline.
+                    </p>
+
+                    <div class="mt-3 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
+                        Bite Score = 35 + live condition modifiers
+                    </div>
+                </div>
+
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-bold text-emerald-400 font-mono">
+                            Target Species Score
+                        </span>
+
+                        <span class="text-xs font-black text-white font-mono">
+                            Base 50
+                        </span>
+                    </div>
+
+                    <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+                        Every lake-listed species begins at
+                        <strong class="text-slate-200">50 points</strong>.
+                        Species-specific temperature, hydrology, current, weather,
+                        light, and seasonal conditions then add or subtract points
+                        before the candidates are ranked.
+                    </p>
+
+                    <div class="mt-3 px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300">
+                        Species Score = 50 + species-specific modifiers
+                    </div>
+                </div>
+
+            </div>
+
+            <p class="text-xs text-slate-500 italic">
+                The two scores are independent. A 70 Bite Index does not mean a
+                species with a 70 Target Species Score was calculated from the
+                lake-wide Bite Index.
+            </p>
         </section>
 
         <!-- Target Species Ranking -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-5">
             <div>
-                <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Target Species Ranking</h2>
+<h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Target Species Ranking</h2>
                 <p class="text-xs sm:text-sm text-slate-400 leading-relaxed mt-2">
                     Target-species selection is a <strong class="text-slate-200">separate scoring system</strong> from the 0–100 Bite Index.
-                    The candidate list comes from ODWC's <em>Fish Species of Interest</em> for each lake. The model never introduces a target
-                    that is not in that lake's stored ODWC species list.
+                    Every candidate begins at a <strong class="text-slate-200">50-point baseline</strong>, then species-specific conditions
+                    add or subtract points. The candidate list comes from ODWC's <em>Fish Species of Interest</em> for each lake, and the model
+                    never introduces a target that is not in that lake's stored ODWC species list.
                 </p>
             </div>
 
@@ -326,56 +521,125 @@
 
         <!-- Water Temperature Estimation Engine Section -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
-            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Estimated Water Temperature & Limnological Thermal Decay Model</h2>
+            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">
+                Estimated Water Temperature &amp; 96-Hour Thermal Inertia Model
+            </h2>
+
             <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Not every USACE reservoir or USGS gauge station maintains an active in-situ sub-surface thermistor year-round. When physical temperature telemetry is offline, OK Bite Index activates an automated <strong>Thermal Decay &amp; Thermal Inertia Model</strong>:
+                When verified in-reservoir temperature telemetry is unavailable,
+                OK Bite Index estimates surface-water temperature from a smooth
+                Oklahoma seasonal reservoir cycle plus recent atmospheric forcing.
+                The estimate is intentionally slow-moving so a single hot or cold
+                hour cannot unrealistically move lake temperature.
             </p>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-cyan-400 font-mono">1. Exponential Moving Average (EMA)</span>
-                    <p class="text-xs text-slate-400">Calculates a 7-to-10-day weighted moving average of ambient air temperatures to capture lake thermal lag and heat capacity.</p>
+                    <span class="text-xs font-bold text-cyan-400 font-mono">
+                        1. Seasonal Reservoir Baseline
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        A continuous day-of-year curve represents the delayed
+                        annual warming and cooling cycle of Oklahoma reservoirs
+                        without abrupt month-boundary jumps.
+                    </p>
                 </div>
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-sky-400 font-mono">2. Solar Radiation &amp; Inflow Modifiers</span>
-                    <p class="text-xs text-slate-400">Factors shortwave solar radiation (W/m²), cloud cover opacity, and major cold runoff inflows from upstream tributaries.</p>
+                    <span class="text-xs font-bold text-sky-400 font-mono">
+                        2. Trailing 96-Hour Air Mean
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        Atmospheric forcing uses 75% trailing 96-hour mean air
+                        temperature and 25% current air temperature, damping
+                        short-lived weather spikes.
+                    </p>
                 </div>
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-emerald-400 font-mono">3. Reservoir Mean Depth Damping</span>
-                    <p class="text-xs text-slate-400">Applies reservoir-specific thermal damping coefficients based on mean pool depth (e.g., deep lakes like Tenkiller vs. shallow lakes like Canton).</p>
+                    <span class="text-xs font-bold text-emerald-400 font-mono">
+                        3. Conservative Thermal Response
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        Only 30% of the difference between effective air
+                        temperature and the seasonal reservoir baseline is
+                        applied, with broad 35–94°F physical sanity bounds.
+                    </p>
                 </div>
+
             </div>
 
             <p class="text-xs text-slate-500 italic pt-1">
-                *Whenever physical telemetry is reporting live, the estimated model is automatically bypassed in favor of raw sensor readings.
+                *Verified in-reservoir sensor telemetry always overrides the
+                estimator. River, tailrace, and upstream stream temperatures
+                are not treated as lake temperature.
             </p>
         </section>
 
         <!-- Dissolved Oxygen Estimation Engine Section -->
         <section class="bg-slate-900 border border-slate-800/90 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
-            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">Dissolved Oxygen (O₂) Saturation &amp; Limnological Estimation</h2>
+
+            <h2 class="text-base sm:text-lg font-bold text-white tracking-tight">
+                Dissolved Oxygen Saturation Estimate
+            </h2>
+
             <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Most freshwater reservoirs lack continuous electrochemical optical dissolved oxygen probes in shallow surface bays. When in-situ USGS DO telemetry is offline, OK Bite Index calculates theoretical surface DO saturation (mg/L) derived from the Henry's Law water-temperature solubility relationship:
+                When a measured dissolved-oxygen value is unavailable, the
+                dashboard displays a surface oxygen-saturation estimate. It is
+                a physical solubility proxy, not a prediction of actual oxygen
+                concentration throughout the water column.
             </p>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-emerald-400 font-mono">1. Temperature-Dependent Solubility</span>
-                    <p class="text-xs text-slate-400">Cold water holds substantially higher dissolved oxygen concentrations (DO ≈ 14.6 - 0.1 × Water Temp °F). As surface water warms above 80°F, saturation thresholds naturally decay toward 6.0–7.0 mg/L.</p>
+                    <span class="text-xs font-bold text-emerald-400 font-mono">
+                        1. Temperature Solubility Curve
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        A freshwater oxygen-solubility polynomial converts the
+                        current lake water temperature to an approximate
+                        saturation concentration in mg/L.
+                    </p>
                 </div>
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-cyan-400 font-mono">2. Wind Aeration &amp; Inflow Dynamics</span>
-                    <p class="text-xs text-slate-400">Surface mechanical agitation from sustained wind (&gt;8 mph) and high-volume spillway/tailrace flows increase atmospheric re-aeration across upper epilimnion layers.</p>
+                    <span class="text-xs font-bold text-cyan-400 font-mono">
+                        2. Surface-Pressure Correction
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        The saturation estimate is adjusted by current local
+                        surface pressure relative to standard sea-level
+                        pressure.
+                    </p>
                 </div>
+
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <span class="text-xs font-bold text-rose-400 font-mono">3. Hypolimnetic Anoxia Suppression</span>
-                    <p class="text-xs text-slate-400">Identifies summer thermal stratification cutoff points (thermoclines) where deep bottom basins drop below 3.0 mg/L, concentrating active predators into shallow oxygen-rich margins.</p>
+                    <span class="text-xs font-bold text-amber-400 font-mono">
+                        3. Explicit Estimate Label
+                    </span>
+
+                    <p class="text-xs text-slate-400">
+                        Estimated values are displayed as “sat est.” They do
+                        not model photosynthesis, biological oxygen demand,
+                        thermocline depth, or hypolimnetic depletion.
+                    </p>
                 </div>
+
             </div>
 
             <p class="text-xs text-slate-500 italic pt-1">
-                *When active USGS optical DO sensors report live telemetry (e.g., Lake Arcadia or Skiatook), estimated values are bypassed and flagged as raw physical readings.
+                *If verified in-situ dissolved-oxygen telemetry is available
+                in the API, the measured value is displayed instead of the
+                saturation estimate.
             </p>
+
         </section>
 
         <!-- Data Sources Section -->
@@ -407,7 +671,7 @@
                             <span class="text-xs font-bold text-emerald-400 font-mono group-hover:text-emerald-300 transition">USGS Water Services</span>
                             <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-emerald-400 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                         </div>
-                        <p class="text-xs text-slate-400 leading-relaxed">Turbidity (FNU), dissolved oxygen (mg/L), in-situ water temperature, and stream gauge telemetry.</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">Dissolved oxygen (mg/L), in-situ water temperature, and stream gauge telemetry.</p>
                     </div>
                     <span class="text-[10px] font-mono text-slate-500 group-hover:text-slate-400">waterservices.usgs.gov &rarr;</span>
                 </a>
