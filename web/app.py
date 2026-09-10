@@ -1,29 +1,4 @@
 
-def estimate_lake_water_temp(air_temp_f, month=None, mean_depth_ft=25.0):
-    if air_temp_f is None:
-        return 78.0
-    try:
-        val = float(air_temp_f)
-    except (ValueError, TypeError):
-        return 78.0
-
-    if month is None:
-        from datetime import datetime
-        month = datetime.utcnow().month
-
-    if 6 <= month <= 8:
-        base_temp = (val * 0.75) + 20.0
-    elif 9 <= month <= 11:
-        base_temp = (val * 0.65) + 26.0
-    elif 3 <= month <= 5:
-        base_temp = (val * 0.60) + 22.0
-    else:
-        base_temp = (val * 0.50) + 25.0
-
-    damping = max(0.85, 1.0 - (float(mean_depth_ft) / 200.0))
-    est = round(base_temp * damping, 1)
-    return min(max(est, 42.0), 89.0)
-
 def get_lunar_telemetry(dt=None):
     if dt is None:
         dt = datetime.now(timezone.utc)
@@ -71,42 +46,271 @@ def get_lunar_telemetry(dt=None):
 
 
 
-def estimate_water_temperature(air_temp_f, month=None):
+def estimate_water_temperature(
+    air_temp_f,
+    month=None,
+    recent_air_temp_f=None,
+    when=None
+):
     """
-    Empirical limnological equilibrium water temp model for shallow-to-mid depth Oklahoma reservoirs.
-    Uses seasonal thermal inertia and heat exchange regression.
+    Estimate Oklahoma reservoir surface-water temperature when actual
+    reservoir temperature telemetry is unavailable.
+
+    The model combines:
+      - a smooth annual reservoir-temperature cycle
+      - modest current-air-temperature forcing
+
+    Reservoir temperature intentionally reacts much more slowly than air
+    temperature. Measured reservoir telemetry always takes precedence.
     """
-    if month is None:
-        month = datetime.now(timezone.utc).month
-    
-    base_air = air_temp_f if air_temp_f is not None else 70.0
-    
-    # Oklahoma seasonal equilibrium offsets
-    if month in [12, 1, 2]:  # Winter
-        est = (base_air * 0.45) + 26.0
-        return round(max(38.0, min(54.0, est)), 1)
-    elif month in [3, 4, 5]:  # Spring warming lag
-        est = (base_air * 0.60) + 22.0
-        return round(max(48.0, min(74.0, est)), 1)
-    elif month in [6, 7, 8, 9]:  # Summer peak thermal stratification
-        est = (base_air * 0.55) + 36.0
-        return round(max(72.0, min(89.0, est)), 1)
-    else:  # Fall cooling
-        est = (base_air * 0.65) + 20.0
-        return round(max(52.0, min(72.0, est)), 1)
+
+    try:
+        air_temp = (
+            float(air_temp_f)
+            if air_temp_f is not None
+            else 70.0
+        )
+    except (TypeError, ValueError):
+        air_temp = 70.0
+
+    # --------------------------------------------------------
+    # Resolve calendar date.
+    #
+    # Existing callers that only provide month continue working,
+    # but an actual timestamp can be supplied for a smoother
+    # day-of-year seasonal calculation.
+    # --------------------------------------------------------
+    dt = None
+
+    if when is not None:
+        if isinstance(when, datetime):
+            dt = when
+        else:
+            try:
+                dt = datetime.fromisoformat(
+                    str(when).replace("Z", "+00:00")
+                )
+            except (TypeError, ValueError):
+                dt = None
+
+    if dt is None:
+        try:
+            month_num = (
+                int(month)
+                if month is not None
+                else datetime.now(timezone.utc).month
+            )
+        except (TypeError, ValueError):
+            month_num = datetime.now(timezone.utc).month
+
+        month_num = max(1, min(12, month_num))
+
+        # Mid-month approximation avoids abrupt month-boundary
+        # jumps for legacy callers.
+        dt = datetime(
+            2024,
+            month_num,
+            15,
+            tzinfo=timezone.utc
+        )
+
+    day_of_year = dt.timetuple().tm_yday
+
+    # --------------------------------------------------------
+    # Smooth Oklahoma reservoir seasonal baseline.
+    #
+    # Approximate annual pattern:
+    #   winter low  : ~46 F
+    #   spring      : gradual warming
+    #   summer peak : ~88 F
+    #   fall        : gradual cooling
+    #
+    # Peak is delayed relative to peak solar input to represent
+    # reservoir thermal inertia.
+    # --------------------------------------------------------
+    seasonal_baseline = (
+        67.0
+        + 21.0
+        * math.sin(
+            (2.0 * math.pi * (day_of_year - 119))
+            / 365.2425
+        )
+    )
+
+    # --------------------------------------------------------
+    # Atmospheric forcing.
+    #
+    # Prefer the trailing 96-hour air-temperature mean when it is
+    # available. Current air receives only 25% of the atmospheric
+    # weight so a single hot/cold afternoon cannot unrealistically
+    # move the estimated reservoir temperature.
+    # --------------------------------------------------------
+    try:
+        recent_air = (
+            float(recent_air_temp_f)
+            if recent_air_temp_f is not None
+            else air_temp
+        )
+    except (TypeError, ValueError):
+        recent_air = air_temp
+
+    effective_air = (
+        (recent_air * 0.75)
+        + (air_temp * 0.25)
+    )
+
+    estimated = (
+        seasonal_baseline
+        + 0.30 * (effective_air - seasonal_baseline)
+    )
+
+    # Broad physical sanity limits only.
+    # Unlike the old model, there is no 89 F seasonal plateau.
+    estimated = max(
+        35.0,
+        min(94.0, estimated)
+    )
+
+    return round(estimated, 1)
+
+
 
 import os
 import math
 import json
 import urllib.request
+import time
+import threading
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import HTMLResponse
 from typing import Optional
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from collections import deque
 
 app = FastAPI()
+
+
+FORECAST_CACHE_TTL_SECONDS = 15 * 60
+FORECAST_STALE_MAX_SECONDS = 60 * 60
+
+_forecast_cache = {}
+_forecast_cache_lock = threading.Lock()
+
+
+def fetch_open_meteo_forecast_cached(
+    lake_code,
+    lat,
+    lon,
+):
+    """
+    Fetch Open-Meteo hourly forecast with a 15-minute per-lake cache.
+
+    Browser cache-busting query parameters do not affect this server-side
+    cache. If Open-Meteo temporarily fails, an expired entry may be reused
+    for up to one hour.
+    """
+    cache_key = (
+        str(lake_code).upper(),
+        round(float(lat), 5),
+        round(float(lon), 5),
+    )
+
+    now_monotonic = time.monotonic()
+
+    with _forecast_cache_lock:
+        entry = _forecast_cache.get(cache_key)
+
+    if entry is not None:
+        age_seconds = (
+            now_monotonic
+            - entry["stored_at"]
+        )
+
+        if age_seconds < FORECAST_CACHE_TTL_SECONDS:
+            return (
+                entry["data"],
+                "HIT",
+                int(age_seconds),
+            )
+    else:
+        age_seconds = None
+
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={float(lat)}"
+        f"&longitude={float(lon)}"
+        f"&hourly="
+        f"temperature_2m,"
+        f"relative_humidity_2m,"
+        f"surface_pressure,"
+        f"wind_speed_10m,"
+        f"wind_gusts_10m,"
+        f"wind_direction_10m,"
+        f"cloud_cover,"
+        f"precipitation_probability,"
+        f"precipitation"
+        f"&temperature_unit=fahrenheit"
+        f"&wind_speed_unit=mph"
+        f"&precipitation_unit=inch"
+        f"&timezone=America%2FChicago"
+        f"&forecast_days=3"
+    )
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "OKLakesTelemetry/2.0"
+            },
+        )
+
+        with urllib.request.urlopen(
+            req,
+            timeout=8,
+        ) as res:
+            data = json.loads(
+                res.read().decode()
+            )
+
+        with _forecast_cache_lock:
+            _forecast_cache[cache_key] = {
+                "stored_at": time.monotonic(),
+                "data": data,
+            }
+
+        return data, "MISS", 0
+
+    except Exception as exc:
+        if (
+            entry is not None
+            and age_seconds is not None
+            and age_seconds
+                <= FORECAST_STALE_MAX_SECONDS
+        ):
+            print(
+                f"[Forecast] Open-Meteo error for "
+                f"{lake_code}; using stale cache: "
+                f"{exc}",
+                flush=True,
+            )
+
+            return (
+                entry["data"],
+                "STALE",
+                int(age_seconds),
+            )
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Forecast provider error: "
+                f"{str(exc)}"
+            ),
+        )
+
 
 DB_HOST = os.getenv("DB_HOST", "ok_lakes_db")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
@@ -121,7 +325,7 @@ def get_db():
 
 def calculate_time_of_day_factor(dt_val):
     """
-    Evaluates diurnal solar periods (CDT timezone):
+    Evaluates diurnal solar periods (Central Time / America/Chicago):
     - Dawn / Sunrise (5:30 AM - 8:30 AM): +15 pts
     - Dusk / Sunset (6:30 PM - 9:00 PM): +15 pts
     - Midday High Sun (11:00 AM - 3:30 PM): -10 pts
@@ -135,8 +339,15 @@ def calculate_time_of_day_factor(dt_val):
         else:
             dt = datetime.now(timezone.utc)
 
-        # Convert to Central Time (-5 hours CDT)
-        local_dt = dt.astimezone(timezone(timedelta(hours=-5)))
+        # Database timestamps are timezone-aware UTC.
+        # Open-Meteo forecast timestamps are America/Chicago local
+        # values without an explicit UTC offset.
+        central = ZoneInfo("America/Chicago")
+
+        if dt.tzinfo is None:
+            local_dt = dt.replace(tzinfo=central)
+        else:
+            local_dt = dt.astimezone(central)
         hour_float = local_dt.hour + (local_dt.minute / 60.0)
 
         if 5.5 <= hour_float <= 8.5:
@@ -152,7 +363,7 @@ def calculate_time_of_day_factor(dt_val):
     except Exception:
         return 0.0
 
-def calculate_spawn_phase(water_temp_f, month, diff_ft=0.0):
+def calculate_spawn_phase(water_temp_f, month):
     """
     Estimate the lake's broad seasonal fishing phase.
 
@@ -233,8 +444,12 @@ def calculate_solunar_factor(dt_val, lon, lat):
             dt = datetime.now(timezone.utc)
 
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        
+            dt = dt.replace(
+                tzinfo=ZoneInfo("America/Chicago")
+            )
+
+        dt = dt.astimezone(timezone.utc)
+
         ts_sec = float(dt.timestamp())
         jd = 2440587.5 + (ts_sec / 86400.0)
         d = jd - 2451545.0
@@ -288,116 +503,170 @@ def calculate_water_temp_factor(temp_f: Optional[float]):
     except Exception:
         return 0.0
 
-def calculate_master_bite_score(
-    pressure,
-    delta_press,
-    wind_speed,
-    cloud_cover,
-    dt_val,
-    lon,
-    lat,
-    water_temp_f=None,
-    release_cfs=None,
-    elev_delta_24h=None,
-    precip_in=None
-):
-    score = 35.0  # Base score adjusted to accommodate time-of-day bonuses
+def calculate_hydrology_factor(diff_from_normal_ft=None, elev_delta_24h=None):
+    """
+    Calculate the lake-level contribution to the bite score.
 
-    dp_val = float(delta_press) if delta_press is not None else 0.0
-    w_val = float(wind_speed) if wind_speed is not None else 0.0
-    c_val = float(cloud_cover) if cloud_cover is not None else 0.0
+    Uses:
+      - current pool elevation relative to normal pool
+      - 24-hour lake-level movement
 
-    # 1. Barometric Pressure
-    if dp_val <= -1.2:
-        score += 25.0
-    elif dp_val <= -0.4:
-        score += 15.0
-    elif -0.4 < dp_val < 0.6:
-        score += 4.0
-    elif dp_val >= 1.8:
-        score -= 22.0
-    elif dp_val >= 0.6:
-        score -= 10.0
+    The combined hydrology effect is capped at -12 to +6 so one
+    hydrologic event cannot dominate the entire bite score.
+    """
 
-    # 2. Wind Chop - Oklahoma reservoir calibration
-    if w_val < 3.0:
-        score -= 6.0
-    elif w_val < 6.0:
-        score += 2.0
-    elif w_val < 12.0:
-        score += 10.0
-    elif w_val < 18.0:
-        score += 12.0
-    elif w_val < 23.0:
-        score += 6.0
-    elif w_val < 28.0:
-        score -= 4.0
-    else:
-        score -= 12.0
+    pool_points = 0.0
+    trend_points = 0.0
+    details = []
 
-    # 3. Cloud Cover
-    if c_val >= 65.0:
-        score += 8.0
-    elif c_val <= 15.0:
-        score -= 4.0
-
-    # 4. Time of Day (Diurnal Solar Cycle)
-    score += calculate_time_of_day_factor(dt_val)
-
-    # 5. Solunar Major / Minor Window
-    sol_score, window_type = calculate_solunar_factor(dt_val, lon, lat)
-    score += sol_score
-
-    # 6. Water Temp Metabolism
-    score += calculate_water_temp_factor(water_temp_f)
-
-    # 7. Dam Flow
-    if release_cfs is not None:
+    # --------------------------------------------------------
+    # Pool elevation relative to normal
+    # --------------------------------------------------------
+    if diff_from_normal_ft is not None:
         try:
-            if float(release_cfs) > 100.0:
-                score += 5.0
-        except Exception:
+            diff = float(diff_from_normal_ft)
+
+            if -1.0 <= diff <= 1.0:
+                pool_points = 3.0
+                details.append(f"{diff:+.2f} ft from normal pool")
+
+            elif -2.0 <= diff < -1.0:
+                pool_points = 1.0
+                details.append(f"{diff:+.2f} ft below normal")
+
+            elif -4.0 <= diff < -2.0:
+                pool_points = -3.0
+                details.append(f"{diff:+.2f} ft below normal")
+
+            elif -7.0 <= diff < -4.0:
+                pool_points = -7.0
+                details.append(f"{diff:+.2f} ft significantly below normal")
+
+            elif diff < -7.0:
+                pool_points = -10.0
+                details.append(f"{diff:+.2f} ft severely below normal")
+
+            elif 1.0 < diff <= 2.0:
+                pool_points = 1.0
+                details.append(f"{diff:+.2f} ft above normal")
+
+            elif 2.0 < diff <= 4.0:
+                pool_points = 2.0
+                details.append(f"{diff:+.2f} ft above normal")
+
+            else:
+                pool_points = -2.0
+                details.append(f"{diff:+.2f} ft well above normal")
+
+        except (TypeError, ValueError):
             pass
 
-    # 8. Pool Fluctuation
+    # --------------------------------------------------------
+    # 24-hour elevation trend
+    # --------------------------------------------------------
     if elev_delta_24h is not None:
         try:
-            ed = float(elev_delta_24h)
-            if ed < -0.3:
-                score -= 6.0
-            elif 0.1 <= ed <= 0.5:
-                score += 4.0
-        except Exception:
+            delta = float(elev_delta_24h)
+
+            if abs(delta) <= 0.10:
+                # Stability is beneficial near normal pool, but should not
+                # erase the penalty from a severe drawdown.
+                if diff_from_normal_ft is not None:
+                    try:
+                        current_diff = float(diff_from_normal_ft)
+
+                        if current_diff < -4.0:
+                            trend_points = 1.0
+                        elif current_diff < -2.0:
+                            trend_points = 2.0
+                        else:
+                            trend_points = 3.0
+
+                    except (TypeError, ValueError):
+                        trend_points = 3.0
+                else:
+                    trend_points = 3.0
+
+                details.append(f"stable ({delta:+.2f} ft/24h)")
+
+            elif 0.10 < delta <= 0.75:
+                trend_points = 2.0
+                details.append(f"slowly rising ({delta:+.2f} ft/24h)")
+
+            elif delta > 0.75:
+                trend_points = -2.0
+                details.append(f"rapidly rising ({delta:+.2f} ft/24h)")
+
+            elif -0.50 <= delta < -0.10:
+                trend_points = -1.0
+                details.append(f"slowly falling ({delta:+.2f} ft/24h)")
+
+            elif delta < -0.50:
+                trend_points = -4.0
+                details.append(f"rapidly falling ({delta:+.2f} ft/24h)")
+
+        except (TypeError, ValueError):
             pass
 
-    # 9. Precipitation & Inflow Dynamics
-    if precip_in is not None:
-        try:
-            pr = float(precip_in)
-            if 0.05 <= pr <= 0.40:
-                score += 7.0
-            elif 0.40 < pr <= 0.80:
-                score += 3.0
-            elif pr > 1.20:
-                score -= 12.0
-        except Exception:
-            pass
+    combined = pool_points + trend_points
 
-    final_score = max(5, min(100, int(round(score))))
-    
-    if final_score >= 80:
-        rating = "EPIC"
-    elif final_score >= 65:
-        rating = "GOOD"
-    elif final_score >= 45:
-        rating = "FAIR"
+    # Prevent hydrology from overwhelming the entire bite model.
+    combined = max(-12.0, min(6.0, combined))
+
+    if not details:
+        detail = "Lake-level telemetry unavailable"
     else:
-        rating = "TOUGH"
+        detail = "; ".join(details)
 
-    return final_score, rating, window_type
+    return combined, detail
 
 
-def calculate_bite_score_breakdown(
+def calculate_pool_score_cap(diff_from_normal_ft=None):
+    """
+    Apply a maximum Bite Index score during severe reservoir drawdown.
+
+    The normal hydrology modifier still applies first. This ceiling prevents
+    otherwise favorable short-term weather conditions from fully overcoming
+    severely abnormal reservoir conditions.
+
+    Returns:
+        (maximum_score, detail)
+
+        maximum_score is None when no cap applies.
+    """
+    if diff_from_normal_ft is None:
+        return None, None
+
+    try:
+        diff = float(diff_from_normal_ft)
+    except (TypeError, ValueError):
+        return None, None
+
+    # More than 10 ft below normal
+    if diff < -10.0:
+        return 34.0, (
+            f"{diff:+.2f} ft below normal pool; "
+            "severe drawdown limits Bite Score to 34"
+        )
+
+    # 7 through 10 ft below normal
+    if diff <= -7.0:
+        return 44.0, (
+            f"{diff:+.2f} ft below normal pool; "
+            "major drawdown limits Bite Score to 44"
+        )
+
+    # 4 through 7 ft below normal
+    if diff <= -4.0:
+        return 64.0, (
+            f"{diff:+.2f} ft below normal pool; "
+            "drawdown limits Bite Score to 64"
+        )
+
+    return None, None
+
+
+def calculate_bite_score(
     delta_press,
     wind_speed,
     cloud_cover,
@@ -406,139 +675,372 @@ def calculate_bite_score_breakdown(
     lat,
     water_temp_f=None,
     release_cfs=None,
+    diff_from_normal_ft=None,
     elev_delta_24h=None,
-    precip_in=None
+    precip_in=None,
+    include_factors=False
 ):
-    """Return the same major score contributions used by the bite model."""
+    """
+    Canonical Bite Index engine.
+
+    Returns:
+        score,
+        rating,
+        solunar_window,
+        factors
+
+    factors is populated only when include_factors=True.
+    """
+    score = 35.0
     factors = []
 
     def add(label, points, detail):
-        factors.append({
-            "label": label,
-            "points": int(round(points)),
-            "detail": detail
-        })
+        nonlocal score
 
-    dp = float(delta_press or 0.0)
-    wind = float(wind_speed or 0.0)
-    clouds = float(cloud_cover or 0.0)
+        points = float(
+            points or 0.0
+        )
+
+        score += points
+
+        if include_factors:
+            factors.append({
+                "label": label,
+                "points": int(round(points)),
+                "detail": detail
+            })
+
+    try:
+        dp = float(
+            delta_press
+            if delta_press is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        dp = 0.0
+
+    try:
+        wind = float(
+            wind_speed
+            if wind_speed is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        wind = 0.0
+
+    try:
+        clouds = float(
+            cloud_cover
+            if cloud_cover is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        clouds = 0.0
+
+
+    # ========================================================
+    # 1. BAROMETRIC PRESSURE
+    # ========================================================
 
     if dp <= -1.2:
-        add("Pressure trend", 25, "Strong falling-pressure feeding trigger")
+        add(
+            "Pressure trend",
+            25,
+            "Strong falling-pressure feeding trigger"
+        )
+
     elif dp <= -0.4:
-        add("Pressure trend", 15, "Falling pressure favors feeding")
+        add(
+            "Pressure trend",
+            15,
+            "Falling pressure favors feeding"
+        )
+
     elif dp < 0.6:
-        add("Pressure trend", 4, "Stable pressure")
+        add(
+            "Pressure trend",
+            4,
+            "Stable pressure"
+        )
+
     elif dp >= 1.8:
-        add("Pressure trend", -22, "Rapidly rising pressure")
+        add(
+            "Pressure trend",
+            -22,
+            "Rapidly rising pressure"
+        )
+
     else:
-        add("Pressure trend", -10, "Rising pressure")
+        add(
+            "Pressure trend",
+            -10,
+            "Rising pressure"
+        )
+
+
+    # ========================================================
+    # 2. WIND
+    # ========================================================
 
     if wind < 3.0:
-        add("Wind", -6, "Very light wind / slick conditions")
+        add(
+            "Wind",
+            -6,
+            "Very light wind / slick conditions"
+        )
+
     elif wind < 6.0:
-        add("Wind", 2, "Light chop")
+        add(
+            "Wind",
+            2,
+            "Light chop"
+        )
+
     elif wind < 12.0:
-        add("Wind", 10, "Productive surface chop")
+        add(
+            "Wind",
+            10,
+            "Productive surface chop"
+        )
+
     elif wind < 18.0:
-        add("Wind", 12, "Strong Oklahoma reservoir feeding chop")
+        add(
+            "Wind",
+            12,
+            "Strong Oklahoma reservoir feeding chop"
+        )
+
     elif wind < 23.0:
-        add("Wind", 6, "Strong but still productive wind")
+        add(
+            "Wind",
+            6,
+            "Strong but still productive wind"
+        )
+
     elif wind < 28.0:
-        add("Wind", -4, "Difficult boat control and wave exposure")
+        add(
+            "Wind",
+            -4,
+            "Difficult boat control and wave exposure"
+        )
+
     else:
-        add("Wind", -12, "Excessive wind / poor fishability")
+        add(
+            "Wind",
+            -12,
+            "Excessive wind / poor fishability"
+        )
 
-    if clouds >= 65:
-        add("Cloud cover", 8, "Low-light conditions")
-    elif clouds <= 15:
-        add("Cloud cover", -4, "Bright clear conditions")
+
+    # ========================================================
+    # 3. CLOUD COVER
+    # ========================================================
+
+    if clouds >= 65.0:
+        add(
+            "Cloud cover",
+            8,
+            "Low-light conditions"
+        )
+
+    elif clouds <= 15.0:
+        add(
+            "Cloud cover",
+            -4,
+            "Bright clear conditions"
+        )
+
     else:
-        add("Cloud cover", 0, "Moderate cloud cover")
+        add(
+            "Cloud cover",
+            0,
+            "Moderate cloud cover"
+        )
 
-    tod = calculate_time_of_day_factor(dt_val)
-    add("Time of day", tod, "Diurnal feeding-window adjustment")
 
-    sol_score, sol_window = calculate_solunar_factor(dt_val, lon, lat)
-    add("Solunar", sol_score, f"{sol_window.title()} lunar window")
+    # ========================================================
+    # 4. TIME OF DAY
+    # ========================================================
 
-    wt_score = calculate_water_temp_factor(water_temp_f)
-    add("Water temperature", wt_score, "Seasonal metabolism adjustment")
+    time_score = (
+        calculate_time_of_day_factor(
+            dt_val
+        )
+    )
 
-    flow_score = 0
+    add(
+        "Time of day",
+        time_score,
+        "Diurnal feeding-window adjustment"
+    )
+
+
+    # ========================================================
+    # 5. SOLUNAR
+    # ========================================================
+
+    sol_score, window_type = (
+        calculate_solunar_factor(
+            dt_val,
+            lon,
+            lat
+        )
+    )
+
+    add(
+        "Solunar",
+        sol_score,
+        f"{window_type.title()} lunar window"
+    )
+
+
+    # ========================================================
+    # 6. WATER TEMPERATURE
+    # ========================================================
+
+    wt_score = (
+        calculate_water_temp_factor(
+            water_temp_f
+        )
+    )
+
+    add(
+        "Water temperature",
+        wt_score,
+        "Seasonal metabolism adjustment"
+    )
+
+
+    # ========================================================
+    # 7. DAM FLOW
+    # ========================================================
+
+    flow_score = 0.0
+
     if release_cfs is not None:
         try:
             if float(release_cfs) > 100.0:
-                flow_score = 5
-        except Exception:
-            pass
-    add("Dam flow", flow_score, "Current / tailrace effect")
+                flow_score = 5.0
 
-    pool_score = 0
-    if elev_delta_24h is not None:
-        try:
-            ed = float(elev_delta_24h)
-            if ed < -0.3:
-                pool_score = -6
-            elif 0.1 <= ed <= 0.5:
-                pool_score = 4
-        except Exception:
+        except (TypeError, ValueError):
             pass
-    add("Pool trend", pool_score, "24-hour water-level movement")
 
-    precip_score = 0
+    add(
+        "Dam flow",
+        flow_score,
+        "Current / tailrace effect"
+    )
+
+
+    # ========================================================
+    # 8. RESERVOIR HYDROLOGY
+    # ========================================================
+
+    hydrology_score, hydrology_detail = (
+        calculate_hydrology_factor(
+            diff_from_normal_ft=(
+                diff_from_normal_ft
+            ),
+            elev_delta_24h=(
+                elev_delta_24h
+            )
+        )
+    )
+
+    add(
+        "Lake level",
+        hydrology_score,
+        hydrology_detail
+    )
+
+
+    # ========================================================
+    # 9. PRECIPITATION
+    # ========================================================
+
+    precip_score = 0.0
+
     if precip_in is not None:
         try:
-            pr = float(precip_in)
-            if 0.05 <= pr <= 0.40:
-                precip_score = 7
-            elif 0.40 < pr <= 0.80:
-                precip_score = 3
-            elif pr > 1.20:
-                precip_score = -12
-        except Exception:
-            pass
-    add("Precipitation", precip_score, "Runoff / disturbance adjustment")
-
-    return factors
-
-
-def get_source_freshness(lake_code, fallback_timestamp=None):
-    """
-    Read per-source success timestamps written by the ingestor.
-    Falls back to the lake reading timestamp if the status table has not
-    been created yet.
-    """
-    result = {}
-    conn = None
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT to_regclass('public.lake_source_status') AS table_name;")
-        exists = cur.fetchone()
-        if exists and exists.get("table_name"):
-            cur.execute(
-                """
-                SELECT source, last_success
-                FROM lake_source_status
-                WHERE lake_code = %s
-                ORDER BY source;
-                """,
-                (lake_code,)
+            precip = float(
+                precip_in
             )
-            for item in cur.fetchall():
-                result[item["source"]] = item["last_success"]
-        cur.close()
-    except Exception:
-        pass
-    finally:
-        if conn:
-            conn.close()
 
-    if not result and fallback_timestamp:
-        result["telemetry"] = fallback_timestamp
+            if 0.05 <= precip <= 0.40:
+                precip_score = 7.0
 
-    return result
+            elif 0.40 < precip <= 0.80:
+                precip_score = 3.0
+
+            elif precip > 1.20:
+                precip_score = -12.0
+
+        except (TypeError, ValueError):
+            pass
+
+    add(
+        "Precipitation",
+        precip_score,
+        "Runoff / disturbance adjustment"
+    )
+
+
+    # ========================================================
+    # SEVERE DRAWDOWN SCORE CAP
+    # ========================================================
+
+    pool_score_cap, pool_cap_detail = (
+        calculate_pool_score_cap(
+            diff_from_normal_ft
+        )
+    )
+
+    if (
+        pool_score_cap is not None
+        and score > pool_score_cap
+    ):
+        cap_adjustment = (
+            float(pool_score_cap)
+            - score
+        )
+
+        add(
+            "Lake level cap",
+            cap_adjustment,
+            pool_cap_detail
+        )
+
+
+    # ========================================================
+    # FINAL SCORE
+    # ========================================================
+
+    final_score = max(
+        5,
+        min(
+            100,
+            int(round(score))
+        )
+    )
+
+    if final_score >= 80:
+        rating = "EPIC"
+
+    elif final_score >= 65:
+        rating = "GOOD"
+
+    elif final_score >= 45:
+        rating = "FAIR"
+
+    else:
+        rating = "TOUGH"
+
+    return (
+        final_score,
+        rating,
+        window_type,
+        factors
+    )
 
 
 def calculate_best_window(forecast_cards, window_hours=3, horizon_hours=24):
@@ -615,62 +1117,79 @@ Allow: /
     return PlainTextResponse(content)
 
 
+
 @app.get("/api/lakes")
 def get_lakes(response: Response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Cache-Control"] = (
+        "no-cache, no-store, must-revalidate"
+    )
+
     conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    query = """
-    SELECT DISTINCT ON (l.lake_code)
-        l.lake_code,
-        l.name AS lake_name,
-        l.latitude,
-        l.longitude,
-        l.normal_pool_ft AS normal_elevation_ft,
-        r.timestamp,
-        r.elevation_ft,
-        r.diff_from_normal_ft,
-        r.water_temp_f,
-        r.air_temp_f,
-        r.wind_speed_mph,
-        r.wind_direction_deg,
-        r.surface_pressure_hpa,
-        r.dissolved_oxygen_mg_l,
-        r.turbidity_fnu,
-        r.conductance_us_cm,
-        r.ph,
-        r.release_cfs, r.inflow_cfs,
-        COALESCE(r.cloud_cover_pct, 0.0) AS cloud_cover_pct,
-        r.precipitation_in,
-        COALESCE(r.uv_index, 0.0) AS uv_index
-    FROM lakes l
-    LEFT JOIN lake_readings r ON l.lake_code = r.lake_code
-    ORDER BY l.lake_code, r.timestamp DESC;
+
+    try:
+        cur = conn.cursor(
+            cursor_factory=RealDictCursor
+        )
+
+        cur.execute("""
+            SELECT
+                lake_code,
+                name AS lake_name
+            FROM lakes
+            ORDER BY lake_code;
+        """)
+
+        return cur.fetchall()
+
+    finally:
+        conn.close()
+
+
+
+
+
+
+def classify_current(inflow_cfs=None, release_cfs=None):
     """
-    cur.execute(query)
-    raw_rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    Classify reservoir current using the stronger available inflow/release
+    signal.
 
-    rows = []
-    for row in raw_rows:
-        r_dict = dict(row)
-        raw_temp = r_dict.get("water_temp_f")
-        if raw_temp is None:
-            air = r_dict.get("air_temp_f") or 82.0
-            ts = r_dict.get("timestamp")
-            m = ts.month if hasattr(ts, "month") else 8
-            r_dict["water_temp_f"] = estimate_lake_water_temp(air, month=m)
-            r_dict["water_temp_is_estimated"] = True
-            r_dict["is_estimated"] = True
-        else:
-            r_dict["water_temp_f"] = round(float(raw_temp), 1)
-            r_dict["water_temp_is_estimated"] = False
-            r_dict["is_estimated"] = False
-        rows.append(r_dict)
+    This is intentionally categorical rather than proportional. Very large
+    flows should identify strong current without allowing extreme CFS values
+    to dominate tactical/species scoring.
 
-    return rows
+    Returns:
+        NONE      < 100 CFS
+        LIGHT     100-199 CFS
+        MODERATE  200-799 CFS
+        STRONG    >= 800 CFS
+    """
+    values = []
 
+    for value in (inflow_cfs, release_cfs):
+        if value is None:
+            continue
+
+        try:
+            values.append(max(0.0, float(value)))
+        except (TypeError, ValueError):
+            continue
+
+    if not values:
+        return "NONE"
+
+    current_cfs = max(values)
+
+    if current_cfs >= 800.0:
+        return "STRONG"
+
+    if current_cfs >= 200.0:
+        return "MODERATE"
+
+    if current_cfs >= 100.0:
+        return "LIGHT"
+
+    return "NONE"
 
 
 def rank_target_species(
@@ -744,12 +1263,23 @@ def rank_target_species(
     except Exception:
         precip = 0.0
 
+    current_class = classify_current(
+        inflow_cfs=inflow,
+        release_cfs=release
+    )
+
     month = int(month or datetime.now(timezone.utc).month)
 
     def add(rec, points, reason):
         rec["score"] += points
+
         if reason:
             rec["reasons"].append(reason)
+
+        rec["factors"].append({
+            "points": points,
+            "reason": reason or ""
+        })
 
     ranked = []
 
@@ -760,7 +1290,9 @@ def rank_target_species(
         rec = {
             "species": name,
             "score": 50.0,
-            "reasons": []
+            "baseline": 50.0,
+            "reasons": [],
+            "factors": []
         }
 
         # ---------- LARGEMOUTH BASS ----------
@@ -806,7 +1338,7 @@ def rank_target_species(
                 add(rec, 14, "Water temperature supports active spotted bass.")
             if 5 <= wind <= 16:
                 add(rec, 8, "Moderate wind improves feeding on points and bluffs.")
-            if release > 100 or inflow > 200:
+            if current_class in ("MODERATE", "STRONG"):
                 add(rec, 6, "Current can concentrate forage.")
             if dp <= -0.4:
                 add(rec, 5, "Falling pressure can improve feeding activity.")
@@ -817,7 +1349,7 @@ def rank_target_species(
                 add(rec, 16, "Water temperature supports active white bass.")
             if wind >= 6:
                 add(rec, 10, "Wind helps concentrate shad and schooling fish.")
-            if inflow >= 200 or release >= 200:
+            if current_class in ("MODERATE", "STRONG"):
                 add(rec, 10, "Current concentrates forage and schooling white bass.")
             if dp <= -0.5:
                 add(rec, 8, "Falling pressure can strengthen schooling activity.")
@@ -832,7 +1364,7 @@ def rank_target_species(
                 add(rec, -8, "Very warm water can restrict striped bass to deeper refuge.")
             if wind >= 6:
                 add(rec, 9, "Wind can push forage into predictable feeding zones.")
-            if inflow >= 200 or release >= 200:
+            if current_class in ("MODERATE", "STRONG"):
                 add(rec, 12, "Current can strongly concentrate baitfish.")
             if dp <= -0.5:
                 add(rec, 7, "Falling pressure can improve open-water feeding.")
@@ -860,7 +1392,7 @@ def rank_target_species(
         elif "catfish, blue" in key or "blue catfish" in key:
             if 55 <= wt <= 85:
                 add(rec, 14, "Water temperature supports active blue catfish.")
-            if inflow >= 200 or release >= 200:
+            if current_class in ("MODERATE", "STRONG"):
                 add(rec, 14, "Current concentrates forage and scent corridors.")
             if pool_diff >= 1.0:
                 add(rec, 9, "Elevated water expands feeding access to flooded habitat.")
@@ -877,7 +1409,7 @@ def rank_target_species(
                 add(rec, 16, "Warm water favors channel catfish feeding.")
             if precip >= 0.05:
                 add(rec, 10, "Recent rain can increase shoreline and inflow feeding.")
-            if inflow >= 100:
+            if current_class in ("LIGHT", "MODERATE", "STRONG"):
                 add(rec, 8, "Inflow delivers forage and scent.")
             if pool_diff >= 0.5:
                 add(rec, 6, "Elevated water increases access to shallow feeding areas.")
@@ -890,7 +1422,7 @@ def rank_target_species(
                 add(rec, 18, "Warm water supports active flathead metabolism.")
             elif wt < 55:
                 add(rec, -12, "Cold water strongly reduces flathead activity.")
-            if inflow >= 150 or release >= 150:
+            if current_class in ("MODERATE", "STRONG"):
                 add(rec, 8, "Current edges create ambush opportunities.")
             if clouds >= 50:
                 add(rec, 5, "Low light favors flathead movement.")
@@ -914,7 +1446,7 @@ def rank_target_species(
 
         # ---------- PADDLEFISH ----------
         elif "paddlefish" in key:
-            if inflow >= 500 or release >= 500:
+            if current_class == "STRONG":
                 add(rec, 20, "Strong current is favorable for paddlefish movement.")
             else:
                 add(rec, -8, "Limited current reduces paddlefish movement potential.")
@@ -942,7 +1474,20 @@ def rank_target_species(
         # Unknown/other ODWC species remain valid candidates with neutral score.
         # This ensures we never invent a species that ODWC did not list.
 
-        rec["score"] = round(max(0.0, min(100.0, rec["score"])), 1)
+        raw_score = rec["score"]
+        final_score = max(0.0, min(100.0, raw_score))
+
+        rec["raw_score"] = round(raw_score, 1)
+        rec["score"] = round(final_score, 1)
+
+        if final_score != raw_score:
+            rec["score_cap_adjustment"] = round(
+                final_score - raw_score,
+                1
+            )
+        else:
+            rec["score_cap_adjustment"] = 0.0
+
         ranked.append(rec)
 
     ranked.sort(key=lambda x: (-x["score"], x["species"].lower()))
@@ -1069,7 +1614,13 @@ def build_recommended_tactic(
         precip = 0.0
 
     if isinstance(dt_val, datetime):
-        local_dt = dt_val.astimezone(timezone(timedelta(hours=-5)))
+        central = ZoneInfo("America/Chicago")
+
+        if dt_val.tzinfo is None:
+            local_dt = dt_val.replace(tzinfo=central)
+        else:
+            local_dt = dt_val.astimezone(central)
+
         hour = local_dt.hour
     else:
         hour = 12
@@ -1100,6 +1651,11 @@ def build_recommended_tactic(
 
     adjustment = None
 
+    current_class = classify_current(
+        inflow_cfs=inflow,
+        release_cfs=release
+    )
+
     # Priority order: strongest tactical modifier wins.
     if pool_diff >= 1.0 and elev_delta >= 0.10:
         adjustment = "Prioritize newly flooded shoreline cover and the first adjacent drop."
@@ -1107,9 +1663,9 @@ def build_recommended_tactic(
         adjustment = "Use the elevated pool to fish flooded cover, but check nearby depth transitions."
     elif elev_delta <= -0.20:
         adjustment = "With falling water, back off to the first break, channel edge, or remaining cover."
-    elif inflow >= 800 or release >= 800:
+    elif current_class == "STRONG":
         adjustment = "Strong current makes seams, eddies, bridge constrictions, and downstream forage concentrations high-priority."
-    elif inflow >= 200 or release >= 200:
+    elif current_class == "MODERATE":
         adjustment = "Use current-facing points and seams where forage is being concentrated."
     elif precip >= 0.05 and inflow > 0:
         adjustment = "Check runoff color lines and inflow mouths for a localized feeding response."
@@ -1154,7 +1710,6 @@ def build_recommended_tactic(
 
 def build_tactical_strategy(
     ranked_species,
-    species_ranking,
     water_temp_f,
     diff_from_normal_ft,
     elevation_delta_24h,
@@ -1218,6 +1773,11 @@ def build_tactical_strategy(
     except Exception:
         precip = 0.0
 
+    current_class = classify_current(
+        inflow_cfs=inflow,
+        release_cfs=release
+    )
+
     # Sentence 1: pool/hydrology
     if pool_diff >= 1.0:
         if elev_delta > 0.10:
@@ -1245,9 +1805,9 @@ def build_tactical_strategy(
 
     # Sentence 3: strongest extra modifier
     extra = None
-    if inflow >= 800 or release >= 800:
+    if current_class == "STRONG":
         extra = "Strong current is a major positioning factor, so prioritize seams, constrictions, and downstream forage."
-    elif inflow >= 200 or release >= 200:
+    elif current_class == "MODERATE":
         extra = "Moderate current should concentrate forage around seams, points, and channel-related structure."
     elif dp <= -0.8:
         extra = "A meaningful pressure drop supports a more aggressive feeding window."
@@ -1286,63 +1846,119 @@ def get_lake_analysis(lake_code: str, response: Response):
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     cur.execute("SELECT name, latitude, longitude, normal_pool_ft, special_regulations, target_species FROM lakes WHERE lake_code = %s", (lake_code,))
-    lake_meta = cur.fetchone() or {"latitude": 35.5, "longitude": -97.5}
+    lake_meta = cur.fetchone()
+
+    if not lake_meta:
+        cur.close()
+        conn.close()
+        raise HTTPException(
+            status_code=404,
+            detail="Lake not found"
+        )
 
     trend_query = """
     WITH latest AS (
         SELECT
-            timestamp, lake_code, elevation_ft, diff_from_normal_ft,
-            release_cfs, inflow_cfs, water_temp_f,
-            COALESCE(air_temp_f, (SELECT air_temp_f FROM lake_readings WHERE lake_code = %s AND air_temp_f IS NOT NULL ORDER BY timestamp DESC LIMIT 1)) AS air_temp_f,
-            COALESCE(wind_speed_mph, (SELECT wind_speed_mph FROM lake_readings WHERE lake_code = %s AND wind_speed_mph IS NOT NULL ORDER BY timestamp DESC LIMIT 1)) AS wind_speed_mph,
-            COALESCE(wind_gust_mph, (SELECT wind_gust_mph FROM lake_readings WHERE lake_code = %s AND wind_gust_mph IS NOT NULL ORDER BY timestamp DESC LIMIT 1)) AS wind_gust_mph,
-            COALESCE(wind_direction_deg, (SELECT wind_direction_deg FROM lake_readings WHERE lake_code = %s AND wind_direction_deg IS NOT NULL ORDER BY timestamp DESC LIMIT 1)) AS wind_direction_deg,
-            COALESCE(surface_pressure_hpa, (SELECT surface_pressure_hpa FROM lake_readings WHERE lake_code = %s AND surface_pressure_hpa IS NOT NULL ORDER BY timestamp DESC LIMIT 1)) AS surface_pressure_hpa,
-            dissolved_oxygen_mg_l, turbidity_fnu, conductance_us_cm, ph,
-            COALESCE(cloud_cover_pct, (SELECT cloud_cover_pct FROM lake_readings WHERE lake_code = %s AND cloud_cover_pct IS NOT NULL ORDER BY timestamp DESC LIMIT 1), 0.0) AS cloud_cover_pct,
-            COALESCE(precipitation_in, (SELECT precipitation_in FROM lake_readings WHERE lake_code = %s AND precipitation_in IS NOT NULL ORDER BY timestamp DESC LIMIT 1), 0.0) AS precipitation_in,
-            COALESCE(uv_index, (SELECT uv_index FROM lake_readings WHERE lake_code = %s AND uv_index IS NOT NULL ORDER BY timestamp DESC LIMIT 1), 0.0) AS uv_index
+            timestamp,
+            lake_code,
+            elevation_ft,
+            diff_from_normal_ft,
+            release_cfs,
+            inflow_cfs,
+            water_temp_f,
+            air_temp_f,
+            wind_speed_mph,
+            wind_gust_mph,
+            wind_direction_deg,
+            surface_pressure_hpa,
+            dissolved_oxygen_mg_l,
+            conductance_us_cm,
+            ph,
+            COALESCE(cloud_cover_pct, 0.0) AS cloud_cover_pct,
+            COALESCE(precipitation_in, 0.0) AS precipitation_in,
+            COALESCE(uv_index, 0.0) AS uv_index
         FROM lake_readings
         WHERE lake_code = %s
         ORDER BY timestamp DESC
         LIMIT 1
     ),
-    smoothed_now AS (
-        SELECT AVG(surface_pressure_hpa) AS press_avg_now
-        FROM lake_readings
-        WHERE lake_code = %s AND timestamp >= NOW() - INTERVAL '2 hours'
-    ),
-    smoothed_baseline AS (
-        SELECT AVG(surface_pressure_hpa) AS press_avg_3h
+    recent_stats AS (
+        SELECT
+            AVG(air_temp_f) FILTER (
+                WHERE air_temp_f IS NOT NULL
+            ) AS recent_air_temp_f,
+
+            AVG(surface_pressure_hpa) FILTER (
+                WHERE timestamp >= NOW() - INTERVAL '2 hours'
+            ) AS press_avg_now,
+
+            AVG(surface_pressure_hpa) FILTER (
+                WHERE timestamp >= NOW() - INTERVAL '5 hours'
+                  AND timestamp <= NOW() - INTERVAL '3 hours'
+            ) AS press_avg_3h
+
         FROM lake_readings
         WHERE lake_code = %s
-          AND timestamp >= NOW() - INTERVAL '5 hours'
-          AND timestamp <= NOW() - INTERVAL '3 hours'
+          AND timestamp >= NOW() - INTERVAL '96 hours'
     ),
     h24 AS (
-        SELECT surface_pressure_hpa AS press_24h_ago, elevation_ft AS elev_24h_ago
+        SELECT
+            surface_pressure_hpa AS press_24h_ago,
+            elevation_ft AS elev_24h_ago
         FROM lake_readings
         WHERE lake_code = %s
-          AND timestamp <= date_trunc('day', (SELECT timestamp AT TIME ZONE 'America/Chicago' FROM latest)) AT TIME ZONE 'America/Chicago'
+          AND timestamp <= (
+              SELECT timestamp
+              FROM latest
+          ) - INTERVAL '24 hours'
           AND elevation_ft IS NOT NULL
         ORDER BY timestamp DESC
         LIMIT 1
     )
     SELECT
         latest.*,
-        ROUND(COALESCE(sn.press_avg_now, latest.surface_pressure_hpa)::numeric, 1) AS cur_press_smoothed,
-        ROUND(COALESCE(sb.press_avg_3h, latest.surface_pressure_hpa)::numeric, 1) AS press_3h_ago,
-        COALESCE(h24.press_24h_ago, latest.surface_pressure_hpa) AS press_24h_ago,
-        COALESCE(h24.elev_24h_ago, latest.elevation_ft) AS elev_24h_ago
+
+        ROUND(
+            COALESCE(
+                rs.press_avg_now,
+                latest.surface_pressure_hpa
+            )::numeric,
+            1
+        ) AS cur_press_smoothed,
+
+        ROUND(
+            COALESCE(
+                rs.press_avg_3h,
+                latest.surface_pressure_hpa
+            )::numeric,
+            1
+        ) AS press_3h_ago,
+
+        COALESCE(
+            h24.press_24h_ago,
+            latest.surface_pressure_hpa
+        ) AS press_24h_ago,
+
+        COALESCE(
+            h24.elev_24h_ago,
+            latest.elevation_ft
+        ) AS elev_24h_ago,
+
+        rs.recent_air_temp_f
+
     FROM latest
-    LEFT JOIN smoothed_now sn ON TRUE
-    LEFT JOIN smoothed_baseline sb ON TRUE
+    LEFT JOIN recent_stats rs ON TRUE
     LEFT JOIN h24 ON TRUE;
     """
-    cur.execute(trend_query, (lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code, lake_code))
+    cur.execute(
+        trend_query,
+        (
+            lake_code,
+            lake_code,
+            lake_code
+        )
+    )
     row = cur.fetchone() or {}
-    cur.close()
-    conn.close()
 
     if row and row.get("timestamp"):
         ts = row["timestamp"]
@@ -1357,8 +1973,28 @@ def get_lake_analysis(lake_code: str, response: Response):
             is_estimated_temp = False
         else:
             air_t = float(row.get("air_temp_f") or 78.0)
-            m_val = ts.month if hasattr(ts, 'month') else datetime.now(timezone.utc).month
-            w_temp = estimate_water_temperature(air_t, m_val)
+            m_val = (
+                ts.month
+                if hasattr(ts, "month")
+                else datetime.now(timezone.utc).month
+            )
+
+            try:
+                recent_air = (
+                    float(row.get("recent_air_temp_f"))
+                    if row.get("recent_air_temp_f") is not None
+                    else air_t
+                )
+            except (TypeError, ValueError):
+                recent_air = air_t
+
+            w_temp = estimate_water_temperature(
+                air_t,
+                month=m_val,
+                recent_air_temp_f=recent_air,
+                when=ts
+            )
+
             is_estimated_temp = True
 
         row["water_temp_f"] = w_temp
@@ -1378,8 +2014,7 @@ def get_lake_analysis(lake_code: str, response: Response):
         lat_val = float(lake_meta["latitude"]) if lake_meta.get("latitude") is not None else 35.5
         lon_val = float(lake_meta["longitude"]) if lake_meta.get("longitude") is not None else -97.5
 
-        score, rating, sol_win = calculate_master_bite_score(
-            pressure=p_now,
+        score, rating, sol_win, bite_factors = calculate_bite_score(
             delta_press=delta_p,
             wind_speed=w_speed,
             cloud_cover=c_cover,
@@ -1388,29 +2023,20 @@ def get_lake_analysis(lake_code: str, response: Response):
             lat=lat_val,
             water_temp_f=w_temp,
             release_cfs=rel_cfs,
+            diff_from_normal_ft=row.get("diff_from_normal_ft"),
             elev_delta_24h=elev_delta,
-            precip_in=precip
+            precip_in=precip,
+            include_factors=True
         )
+
         row["lake_name"] = lake_meta.get("name")
         row["bite_score"] = score
         row["bite_rating"] = rating
         row["solunar_window"] = sol_win
-        row["bite_factors"] = calculate_bite_score_breakdown(
-            delta_press=delta_p,
-            wind_speed=w_speed,
-            cloud_cover=c_cover,
-            dt_val=ts,
-            lon=lon_val,
-            lat=lat_val,
-            water_temp_f=w_temp,
-            release_cfs=rel_cfs,
-            elev_delta_24h=elev_delta,
-            precip_in=precip
-        )
+        row["bite_factors"] = bite_factors
         _month_for_phase = ts.month if hasattr(ts, "month") else datetime.now(timezone.utc).month
         _seasonal = calculate_spawn_phase(w_temp, _month_for_phase)
         row["seasonal_phase"] = _seasonal.get("phase")
-        row["spawn_phase"] = _seasonal.copy()
         row["lunar"] = get_lunar_telemetry(ts)
 
         try:
@@ -1437,9 +2063,7 @@ def get_lake_analysis(lake_code: str, response: Response):
                 top_n=3
             )
 
-            row["lake_species"] = lake_species
             row["target_species"] = ranked_species
-            row["primary_species"] = ", ".join(ranked_species)
             row["species_ranking"] = species_ranking
 
             recommended_tactic = build_recommended_tactic(
@@ -1458,7 +2082,6 @@ def get_lake_analysis(lake_code: str, response: Response):
 
             tactical_strategy = build_tactical_strategy(
                 ranked_species=ranked_species,
-                species_ranking=species_ranking,
                 water_temp_f=_wt,
                 diff_from_normal_ft=_diff,
                 elevation_delta_24h=row.get("elevation_delta_24h"),
@@ -1473,124 +2096,283 @@ def get_lake_analysis(lake_code: str, response: Response):
             )
 
             row["recommended_tactic"] = recommended_tactic
-            row["tactical_strategy"] = tactical_strategy
-
-            # Backward compatibility with the existing HTML:
-            # Recommended Tactic currently reads spawn_phase.tactic.
-            row["spawn_phase"]["tactic"] = recommended_tactic
-
-            # Tactical Strategy currently reads analysis_commentary.
             row["analysis_commentary"] = tactical_strategy
-            row["tactical_summary"] = tactical_strategy
 
         except Exception as _e:
-            row["lake_species"] = (lake_meta or {}).get("target_species") or []
-            row["target_species"] = row["lake_species"][:3] if isinstance(row["lake_species"], list) else []
-            row["primary_species"] = ", ".join(row["target_species"])
+            fallback_species = (
+                (lake_meta or {}).get("target_species")
+                or []
+            )
+
+            if isinstance(fallback_species, str):
+                fallback_species = [
+                    item.strip()
+                    for item in fallback_species.split(",")
+                    if item.strip()
+                ]
+
+            row["target_species"] = (
+                fallback_species[:3]
+                if isinstance(fallback_species, list)
+                else []
+            )
+
             row["species_ranking"] = []
-            row["recommended_tactic"] = "Use lake structure, current, forage, and depth transitions while species ranking is unavailable."
-            row["tactical_strategy"] = "Species ranking is unavailable; use the lake-listed species and current telemetry as the primary guide."
-            if isinstance(row.get("spawn_phase"), dict):
-                row["spawn_phase"]["tactic"] = row["recommended_tactic"]
-            row["analysis_commentary"] = row["tactical_strategy"]
-            row["tactical_summary"] = row["tactical_strategy"]
+
+            row["recommended_tactic"] = (
+                "Use lake structure, current, forage, and depth "
+                "transitions while species ranking is unavailable."
+            )
+
+            row["analysis_commentary"] = (
+                "Species ranking is unavailable; use the lake-listed "
+                "species and current telemetry as the primary guide."
+            )
 
     if row:
-        row["normal_pool_ft"] = float(lake_meta["normal_pool_ft"]) if lake_meta and lake_meta.get("normal_pool_ft") is not None else None
-        row["special_regulations"] = (lake_meta or {}).get("special_regulations") or "Statewide general limits apply (no special area restrictions listed)."
-        if "lake_species" not in row:
-            row["lake_species"] = (lake_meta or {}).get("target_species") or []
-        row["source_freshness"] = get_source_freshness(lake_code, row.get("timestamp"))
-    return row
-
-@app.get("/api/lakes/{lake_code}/alerts")
-def get_lake_alerts(lake_code: str):
-    """
-    Return active project/access alerts for a lake.
-
-    Alerts are populated by external project/news ingestors such as
-    arcadia_projects.py.
-    """
-    conn = None
-
-    try:
-        conn = get_db()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute("""
-            SELECT
-                project_key,
-                project_name,
-                source_name,
-                source_url,
-                summary,
-                status,
-                source_modified,
-                first_seen,
-                last_seen,
-                changed_at,
-                is_active
-            FROM lake_project_alerts
-            WHERE lake_code = %s
-              AND is_active = TRUE
-            ORDER BY changed_at DESC;
-        """, (lake_code.upper(),))
-
-        return [dict(row) for row in cur.fetchall()]
-
-    except psycopg2.errors.UndefinedTable:
-        # Alert ingestion has not been initialized yet.
-        if conn:
-            conn.rollback()
-        return []
-
-    except Exception as exc:
-        print(
-            f"[Lake Alerts] Error loading alerts for {lake_code}: {exc}",
-            flush=True
+        row["normal_pool_ft"] = (
+            float(lake_meta["normal_pool_ft"])
+            if (
+                lake_meta
+                and lake_meta.get("normal_pool_ft") is not None
+            )
+            else None
         )
-        if conn:
+
+        row["special_regulations"] = (
+            (lake_meta or {}).get("special_regulations")
+            or (
+                "Statewide general limits apply "
+                "(no special area restrictions listed)."
+            )
+        )
+
+        # ----------------------------------------------------
+        # Source freshness -- same DB connection as analysis.
+        # ----------------------------------------------------
+        source_freshness = {}
+
+        try:
+            cur.execute(
+                """
+                SELECT source, last_success
+                FROM lake_source_status
+                WHERE lake_code = %s
+                ORDER BY source;
+                """,
+                (lake_code,)
+            )
+
+            for item in cur.fetchall():
+                source_freshness[item["source"]] = (
+                    item["last_success"]
+                )
+
+        except psycopg2.errors.UndefinedTable:
             conn.rollback()
-        return []
 
-    finally:
-        if conn:
-            conn.close()
+        except Exception as exc:
+            conn.rollback()
 
+            print(
+                f"[Source Freshness] Error loading "
+                f"{lake_code}: {exc}",
+                flush=True
+            )
+
+        if row.get("timestamp"):
+            source_freshness["telemetry"] = (
+                row["timestamp"]
+            )
+
+        row["source_freshness"] = source_freshness
+
+        # ----------------------------------------------------
+        # Active lake alerts -- same DB connection as analysis.
+        # ----------------------------------------------------
+        lake_alerts = []
+
+        try:
+            cur.execute(
+                """
+                SELECT
+                    project_key,
+                    project_name,
+                    source_name,
+                    source_url,
+                    summary,
+                    status,
+                    source_modified,
+                    first_seen,
+                    last_seen,
+                    changed_at,
+                    is_active
+                FROM lake_project_alerts
+                WHERE lake_code = %s
+                  AND is_active = TRUE
+                ORDER BY changed_at DESC;
+                """,
+                (lake_code.upper(),)
+            )
+
+            lake_alerts = [
+                dict(item)
+                for item in cur.fetchall()
+            ]
+
+        except psycopg2.errors.UndefinedTable:
+            conn.rollback()
+
+        except Exception as exc:
+            conn.rollback()
+
+            print(
+                f"[Lake Alerts] Error loading "
+                f"{lake_code} during analysis: {exc}",
+                flush=True
+            )
+
+        row["lake_alerts"] = lake_alerts
+
+    # Internal calculation fields are not part of the public API.
+    for internal_key in (
+        "recent_air_temp_f",
+        "elev_24h_ago",
+        "press_24h_ago",
+        "conductance_us_cm",
+        "ph"
+    ):
+        row.pop(
+            internal_key,
+            None
+        )
+
+    cur.close()
+    conn.close()
+
+    return row
 
 @app.get("/api/lakes/{lake_code}/forecast")
 def get_lake_forecast(lake_code: str, response: Response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT latitude, longitude, name FROM lakes WHERE lake_code = %s", (lake_code,))
+    cur.execute(
+        """
+        SELECT latitude, longitude, name
+        FROM lakes
+        WHERE lake_code = %s
+        """,
+        (lake_code,)
+    )
+
     lake = cur.fetchone()
-    
-    cur.execute("SELECT water_temp_f FROM lake_readings WHERE lake_code = %s AND water_temp_f IS NOT NULL ORDER BY timestamp DESC LIMIT 1", (lake_code,))
-    latest_wt = cur.fetchone()
+
+    if (
+        not lake
+        or lake.get("latitude") is None
+        or lake.get("longitude") is None
+    ):
+        cur.close()
+        conn.close()
+
+        raise HTTPException(
+            status_code=404,
+            detail="Lake coordinates not found"
+        )
+
+    cur.execute(
+        """
+        SELECT
+            r.timestamp,
+            r.water_temp_f,
+            r.air_temp_f,
+            r.release_cfs,
+            r.diff_from_normal_ft,
+            r.elevation_ft,
+            (
+                SELECT AVG(avgsrc.air_temp_f)
+                FROM lake_readings avgsrc
+                WHERE avgsrc.lake_code = r.lake_code
+                  AND avgsrc.timestamp >= NOW() - INTERVAL '96 hours'
+                  AND avgsrc.air_temp_f IS NOT NULL
+            ) AS recent_air_temp_f,
+            (
+                r.elevation_ft - (
+                    SELECT old.elevation_ft
+                    FROM lake_readings old
+                    WHERE old.lake_code = r.lake_code
+                      AND old.timestamp
+                          <= r.timestamp - INTERVAL '24 hours'
+                      AND old.elevation_ft IS NOT NULL
+                    ORDER BY old.timestamp DESC
+                    LIMIT 1
+                )
+            ) AS elevation_delta_24h
+        FROM lake_readings r
+        WHERE r.lake_code = %s
+        ORDER BY r.timestamp DESC
+        LIMIT 1
+        """,
+        (lake_code,)
+    )
+
+    latest_data = cur.fetchone() or {}
+
     cur.close()
     conn.close()
 
-    if not lake or lake.get("latitude") is None or lake.get("longitude") is None:
-        raise HTTPException(status_code=404, detail="Lake coordinates not found")
-
     lat = float(lake["latitude"])
     lon = float(lake["longitude"])
-    water_temp_baseline = float(latest_wt["water_temp_f"]) if latest_wt and latest_wt.get("water_temp_f") is not None else None
 
-    url = (
-        f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
-        f"&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_gusts_10m,wind_direction_10m,cloud_cover,precipitation_probability,precipitation"
-        f"&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch"
-        f"&timezone=America%2FChicago&forecast_days=3"
+    raw_water_temp = latest_data.get("water_temp_f")
+
+    if (
+        raw_water_temp is not None
+        and float(raw_water_temp or 0) > 0
+    ):
+        water_temp_baseline = float(raw_water_temp)
+
+    else:
+        air_temp = latest_data.get("air_temp_f")
+
+        try:
+            recent_air_temp = (
+                float(latest_data.get("recent_air_temp_f"))
+                if latest_data.get("recent_air_temp_f") is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            recent_air_temp = None
+
+        forecast_now = datetime.now(
+            ZoneInfo("America/Chicago")
+        )
+
+        forecast_month = forecast_now.month
+
+        water_temp_baseline = estimate_water_temperature(
+            air_temp,
+            month=forecast_month,
+            recent_air_temp_f=recent_air_temp,
+            when=forecast_now
+        )
+
+    release_baseline = latest_data.get("release_cfs")
+    pool_diff_baseline = latest_data.get(
+        "diff_from_normal_ft"
     )
-    
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "OKLakesTelemetry/2.0"})
-        with urllib.request.urlopen(req, timeout=8) as res:
-            data = json.loads(res.read().decode())
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Forecast provider error: {str(e)}")
+    elevation_delta_baseline = latest_data.get(
+        "elevation_delta_24h"
+    )
+
+    data, forecast_cache_status, forecast_cache_age_seconds = (
+        fetch_open_meteo_forecast_cached(
+            lake_code=lake_code,
+            lat=lat,
+            lon=lon,
+        )
+    )
 
     hourly = data.get("hourly", {})
     times = hourly.get("time", [])
@@ -1614,8 +2396,7 @@ def get_lake_forecast(lake_code: str, response: Response):
         c_cover = float(clouds[i])
         pr_val = float(precips[i]) if i < len(precips) and precips[i] is not None else 0.0
         
-        score, rating, sol_win = calculate_master_bite_score(
-            pressure=p_now,
+        score, rating, sol_win, _ = calculate_bite_score(
             delta_press=delta_p,
             wind_speed=w_speed,
             cloud_cover=c_cover,
@@ -1623,10 +2404,19 @@ def get_lake_forecast(lake_code: str, response: Response):
             lon=lon,
             lat=lat,
             water_temp_f=water_temp_baseline,
-            precip_in=pr_val
+            release_cfs=release_baseline,
+            diff_from_normal_ft=pool_diff_baseline,
+            elev_delta_24h=elevation_delta_baseline,
+            precip_in=pr_val,
+            include_factors=False
         )
 
-        g_val = float(wind_gusts[i]) if 'wind_gusts' in locals() and i < len(wind_gusts) and wind_gusts[i] is not None else w_speed
+        g_val = (
+            float(wind_gusts[i])
+            if i < len(wind_gusts)
+            and wind_gusts[i] is not None
+            else w_speed
+        )
         forecast_cards.append({
             "time": times[i],
             "air_temp_f": temps[i],
@@ -1636,7 +2426,6 @@ def get_lake_forecast(lake_code: str, response: Response):
             "delta_pressure_2h": delta_p,
             "wind_speed_mph": w_speed,
             "wind_gust_mph": round(g_val, 1),
-            "wind_gust_mph": float(wind_gusts[i]) if i < len(wind_gusts) and wind_gusts[i] is not None else w_speed,
             "wind_direction_deg": wind_dirs[i],
             "cloud_cover_pct": c_cover,
             "precip_prob_pct": precip_probs[i],
@@ -1645,99 +2434,240 @@ def get_lake_forecast(lake_code: str, response: Response):
             "solunar_window": sol_win
         })
 
-    # Ensure water temp fallback is calculated
-    raw_wt = latest_data.get('water_temp_f') if 'latest_data' in locals() and latest_data else None
-    if raw_wt is not None and float(raw_wt or 0) > 0:
-        final_water_temp = float(raw_wt)
-        is_estimated = False
-    else:
-        air_val = latest_data.get('air_temp_f') if 'latest_data' in locals() and latest_data else 78.0
-        now_m = now.month if 'now' in locals() else 8
-        final_water_temp = estimate_water_temperature(air_val, now_m)
-        is_estimated = True
     visible_forecast = forecast_cards[:48]
     return {
         "lake_code": lake_code,
         "lake_name": lake["name"],
         "forecast": visible_forecast,
-        "best_window": calculate_best_window(visible_forecast)
+        "best_window": calculate_best_window(visible_forecast),
+        "hydrology_assumption": "Current reservoir hydrology is held constant across the forecast window.",
+        "forecast_cache_status": forecast_cache_status,
+        "forecast_cache_age_seconds": forecast_cache_age_seconds
     }
 
-@app.get("/api/lakes/{lake_code}/history")
-def get_history(lake_code: str, response: Response, days: int = 7, target_date: Optional[str] = None):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    if target_date:
-        query = """
-        WITH time_slots AS (
-            SELECT generate_series(
-                (%s || ' 00:00:00 America/Chicago')::timestamptz,
-                (%s || ' 23:45:00 America/Chicago')::timestamptz,
-                INTERVAL '15 minutes'
-            ) AS bucket
-        ),
-        aggregated AS (
-            SELECT 
-                time_bucket('15 minutes', timestamp) AS bucket,
-                AVG(elevation_ft) AS elevation_ft,
-                AVG(water_temp_f) AS water_temp_f,
-                AVG(surface_pressure_hpa) AS surface_pressure_hpa,
-                AVG(release_cfs) AS release_cfs,
-                AVG(inflow_cfs) AS inflow_cfs,
-                AVG(dissolved_oxygen_mg_l) AS dissolved_oxygen_mg_l,
-                AVG(cloud_cover_pct) AS cloud_cover_pct
-            FROM lake_readings
-            WHERE lake_code = %s 
-              AND timestamp >= (%s || ' 00:00:00 America/Chicago')::timestamptz - INTERVAL '2 hours'
-              AND timestamp <= (%s || ' 23:59:59 America/Chicago')::timestamptz
-            GROUP BY 1
-        )
-        SELECT 
-            ts.bucket,
-            ROUND(COALESCE(
-                a.elevation_ft, 
-                (SELECT elevation_ft FROM lake_readings WHERE lake_code = %s AND timestamp <= ts.bucket ORDER BY timestamp DESC LIMIT 1)
-            )::numeric, 2) AS elevation_ft,
-            ROUND(COALESCE(
-                a.surface_pressure_hpa, 
-                (SELECT surface_pressure_hpa FROM lake_readings WHERE lake_code = %s AND timestamp <= ts.bucket ORDER BY timestamp DESC LIMIT 1)
-            )::numeric, 1) AS surface_pressure_hpa,
-            ROUND(a.water_temp_f::numeric, 1) AS water_temp_f,
-            ROUND(a.release_cfs::numeric, 1) AS release_cfs,
-            ROUND(a.inflow_cfs::numeric, 1) AS inflow_cfs,
-            ROUND(a.dissolved_oxygen_mg_l::numeric, 2) AS dissolved_oxygen_mg_l,
-            ROUND(a.cloud_cover_pct::numeric, 0) AS cloud_cover_pct
-        FROM time_slots ts
-        LEFT JOIN aggregated a ON ts.bucket = a.bucket
-        ORDER BY ts.bucket ASC;
-        """
-        cur.execute(query, (target_date, target_date, lake_code, target_date, target_date, lake_code, lake_code))
-    else:
-        bucket_interval = "1 hour" if days <= 7 else ("3 hours" if days <= 30 else "6 hours")
-        query = f"""
-        SELECT 
-            time_bucket('{bucket_interval}', timestamp) AS bucket,
-            ROUND(AVG(elevation_ft)::numeric, 2) AS elevation_ft,
-            ROUND(AVG(water_temp_f)::numeric, 1) AS water_temp_f,
-            ROUND(AVG(air_temp_f)::numeric, 1) AS air_temp_f,
-            ROUND(AVG(surface_pressure_hpa)::numeric, 1) AS surface_pressure_hpa,
-            ROUND(AVG(release_cfs)::numeric, 1) AS release_cfs,
-            ROUND(AVG(inflow_cfs)::numeric, 1) AS inflow_cfs,
-            ROUND(AVG(dissolved_oxygen_mg_l)::numeric, 2) AS dissolved_oxygen_mg_l,
-            ROUND(AVG(cloud_cover_pct)::numeric, 0) AS cloud_cover_pct
-        FROM lake_readings
-        WHERE lake_code = %s AND timestamp >= NOW() - INTERVAL '{days} days'
-        GROUP BY 1
-        ORDER BY 1 ASC;
-        """
-        cur.execute(query, (lake_code,))
 
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+@app.get("/api/lakes/{lake_code}/history")
+def get_history(
+    lake_code: str,
+    response: Response,
+    days: int = 7
+):
+    response.headers["Cache-Control"] = (
+        "no-cache, no-store, must-revalidate"
+    )
+
+    # Keep pathological or accidental requests bounded while
+    # preserving the frontend's normal 7/30/90-day behavior.
+    days = max(1, min(int(days), 365))
+
+    bucket_interval = (
+        "1 hour"
+        if days <= 7
+        else (
+            "3 hours"
+            if days <= 30
+            else "6 hours"
+        )
+    )
+
+    conn = get_db()
+
+    try:
+        cur = conn.cursor(
+            cursor_factory=RealDictCursor
+        )
+
+        query = f"""
+            SELECT
+                time_bucket(
+                    '{bucket_interval}',
+                    timestamp
+                ) AS bucket,
+
+                ROUND(
+                    AVG(elevation_ft)::numeric,
+                    2
+                ) AS elevation_ft,
+
+                ROUND(
+                    AVG(water_temp_f)::numeric,
+                    1
+                ) AS water_temp_f,
+
+                ROUND(
+                    AVG(air_temp_f)::numeric,
+                    1
+                ) AS air_temp_f,
+
+                ROUND(
+                    AVG(surface_pressure_hpa)::numeric,
+                    1
+                ) AS surface_pressure_hpa,
+
+                ROUND(
+                    AVG(release_cfs)::numeric,
+                    1
+                ) AS release_cfs,
+
+                ROUND(
+                    AVG(inflow_cfs)::numeric,
+                    1
+                ) AS inflow_cfs,
+
+                ROUND(
+                    AVG(dissolved_oxygen_mg_l)::numeric,
+                    2
+                ) AS dissolved_oxygen_mg_l,
+
+                ROUND(
+                    AVG(cloud_cover_pct)::numeric,
+                    0
+                ) AS cloud_cover_pct
+
+            FROM lake_readings
+
+            WHERE lake_code = %s
+              AND timestamp >= NOW() - INTERVAL '{days} days'
+
+            GROUP BY 1
+            ORDER BY 1 ASC;
+        """
+
+        cur.execute(
+            query,
+            (lake_code,)
+        )
+
+        rows = cur.fetchall()
+
+    finally:
+        conn.close()
+
+    # ----------------------------------------------------
+    # Fill missing historical reservoir-temperature
+    # observations with the same model used by live
+    # analysis.
+    #
+    # A rolling 96-hour air-temperature window keeps this
+    # O(n). Real reservoir telemetry always wins.
+    # ----------------------------------------------------
+
+    air_window = deque()
+    air_window_sum = 0.0
+
+    for row in rows:
+        bucket = row.get("bucket")
+        air_temp = row.get("air_temp_f")
+
+        try:
+            air_temp = (
+                float(air_temp)
+                if air_temp is not None
+                else None
+            )
+
+        except (TypeError, ValueError):
+            air_temp = None
+
+        if isinstance(bucket, datetime):
+            bucket_dt = bucket
+
+        elif bucket is not None:
+            try:
+                bucket_dt = datetime.fromisoformat(
+                    str(bucket).replace(
+                        "Z",
+                        "+00:00"
+                    )
+                )
+
+            except (TypeError, ValueError):
+                bucket_dt = None
+
+        else:
+            bucket_dt = None
+
+        # Maintain trailing 96-hour atmospheric window.
+        if bucket_dt is not None:
+
+            while air_window:
+                age_hours = (
+                    bucket_dt
+                    - air_window[0][0]
+                ).total_seconds() / 3600.0
+
+                if age_hours <= 96.0:
+                    break
+
+                _, old_air = air_window.popleft()
+                air_window_sum -= old_air
+
+            if air_temp is not None:
+                air_window.append(
+                    (
+                        bucket_dt,
+                        air_temp
+                    )
+                )
+
+                air_window_sum += air_temp
+
+        recent_air = (
+            air_window_sum
+            / len(air_window)
+            if air_window
+            else air_temp
+        )
+
+        raw_water_temp = row.get(
+            "water_temp_f"
+        )
+
+        try:
+            has_measured_temp = (
+                raw_water_temp is not None
+                and float(raw_water_temp) > 0
+            )
+
+        except (TypeError, ValueError):
+            has_measured_temp = False
+
+        # Real reservoir telemetry always wins.
+        if has_measured_temp:
+            row["water_temp_f"] = round(
+                float(raw_water_temp),
+                1
+            )
+
+            row[
+                "water_temp_is_estimated"
+            ] = False
+
+            continue
+
+        historical_month = (
+            bucket_dt.month
+            if bucket_dt is not None
+            else datetime.now(
+                timezone.utc
+            ).month
+        )
+
+        row["water_temp_f"] = (
+            estimate_water_temperature(
+                air_temp,
+                month=historical_month,
+                recent_air_temp_f=recent_air,
+                when=bucket_dt
+            )
+        )
+
+        row[
+            "water_temp_is_estimated"
+        ] = True
+
     return rows
+
 
 
 
