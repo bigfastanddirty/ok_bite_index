@@ -102,6 +102,18 @@
 
     <!-- Main Content -->
     <main class="w-[96%] max-w-[2200px] mx-auto px-2 sm:px-4 md:px-5 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-6 sm:space-y-8 lg:space-y-10">
+<section class="mx-auto max-w-5xl p-4 text-sm text-slate-300">
+<strong>Accuracy and data quality</strong>
+<p>The Bite Index and species scores are unvalidated relative condition rankings, not catch probabilities.
+Current and forecast scoring both use a three-hour pressure difference and one-hour rainfall total.
+Weather observations expire after one hour, CWMS measurements after four hours, and Hefner measurements after six hours.
+Missing essential weather data yields an unavailable score. Each metric retains its source observation time and quality metadata.</p>
+<p>Solar windows follow lake-specific sunrise and sunset. Lunar windows follow computed rise, set, upper and lower transit events.
+Astronomical times are calculated with PyEphem; their fishing-effect weights have not been validated against catches.
+Forecast reservoir temperature and hydrology are held at their current baseline, rather than predicted independently.
+Historical charts use applicable operating pool references. Issued prediction snapshots and source observations are retained for future validation.</p>
+</section>
+
 
         <!-- 1. Live Bite Score Methodology -->
         <section class="space-y-6">
