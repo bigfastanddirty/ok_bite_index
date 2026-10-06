@@ -1,4 +1,6 @@
 from odwc_regs import sync_odwc_regs
+from quality import *
+_observations = {}
 import os
 import sys
 import time
@@ -166,6 +168,8 @@ def fetch_cwms_elevation(lake_code):
         r.raise_for_status()
 
         values = r.json().get("values", [])
+        if str(r.json().get('units','')).lower() not in ('ft','feet'):
+            raise ValueError('Unexpected CWMS elevation units')
         now_utc = datetime.now(timezone.utc)
 
         for row in reversed(values):
@@ -193,10 +197,15 @@ def fetch_cwms_elevation(lake_code):
 
                 return None
 
-            return round(
-                float(row[1]),
-                2
-            )
+            value = valid_value('elevation_ft', row[1])
+            if value is None:
+                continue
+            _observations[(lake_code, 'elevation_ft')] = dict(
+                metric='elevation_ft', value=value, source='cwms',
+                observed_at=_parse_cwms_observation_time(row[0]),
+                payload={'series':series_name,'units':r.json().get('units'),
+                         'row':row,'vertical_datum':r.json().get('vertical-datum-info')})
+            return round(value, 2)
 
     except Exception as exc:
         print(
@@ -249,6 +258,8 @@ def fetch_cwms_flow(lake_code, flow_type):
         r.raise_for_status()
 
         values = r.json().get("values", [])
+        if str(r.json().get('units','')).lower() not in ('cfs','ft3/s'):
+            raise ValueError('Unexpected CWMS flow units')
         now_utc = datetime.now(timezone.utc)
 
         for row in reversed(values):
@@ -279,7 +290,7 @@ def fetch_cwms_flow(lake_code, flow_type):
 
             value = float(row[1])
 
-            if value < 0 or value > 500000:
+            if valid_value(flow_type+'_cfs' if flow_type == 'inflow' else 'release_cfs', value) is None:
                 print(
                     f"[{lake_code}] Rejecting invalid CWMS "
                     f"{flow_type} value "
@@ -289,10 +300,12 @@ def fetch_cwms_flow(lake_code, flow_type):
 
                 continue
 
-            return round(
-                value,
-                1
-            )
+            metric = 'inflow_cfs' if flow_type == 'inflow' else 'release_cfs'
+            _observations[(lake_code, metric)] = dict(
+                metric=metric, value=value, source='cwms',
+                observed_at=_parse_cwms_observation_time(row[0]),
+                payload={'series':series_name,'units':r.json().get('units'),'row':row})
+            return round(value, 1)
 
     except Exception as exc:
         print(
@@ -552,143 +565,17 @@ def fetch_cwms_reference_level(lake_code, when, all_levels):
 
 
 def fetch_hefner_telemetry():
-    """
-    Fetch current Lake Hefner reservoir telemetry with one USGS request.
-
-    00065 = gage/elevation value used for reservoir elevation
-    00011 = verified tower water temperature in degrees Fahrenheit
-
-    Both observations must be no more than 6 hours old.
-    """
-    result = {
-        "elevation": None,
-        "temp_f": None,
-    }
-
+    result={'elevation':None,'temp_f':None}
     try:
-        r = requests.get(
-            "https://waterservices.usgs.gov/nwis/iv/",
-            params={
-                "format": "json",
-                "sites": HEFNER_USGS_SITE,
-                "parameterCd": "00065,00011",
-                "period": "P2D",
-                "siteStatus": "all",
-            },
-            timeout=12,
-        )
-        r.raise_for_status()
-
-        series = (
-            r.json()
-            .get("value", {})
-            .get("timeSeries", [])
-        )
-
-        now_utc = datetime.now(timezone.utc)
-
-        for series_item in series:
-            variable_codes = (
-                series_item
-                .get("variable", {})
-                .get("variableCode", [])
-            )
-
-            parameter_code = None
-
-            for code_item in variable_codes:
-                value = str(code_item.get("value") or "").strip()
-
-                if value in ("00065", "00011"):
-                    parameter_code = value
-                    break
-
-            if parameter_code is None:
+        now=datetime.now(timezone.utc)
+        for observation in fetch_usgs():
+            if not is_fresh(observation['observed_at'], now, 6):
                 continue
-
-            values = (
-                series_item
-                .get("values", [{}])[0]
-                .get("value", [])
-            )
-
-            for item in reversed(values):
-                raw = item.get("value")
-                observed_raw = item.get("dateTime")
-
-                if raw in (None, "", "-999999") or not observed_raw:
-                    continue
-
-                try:
-                    numeric_value = float(raw)
-
-                    observed = datetime.fromisoformat(
-                        observed_raw.replace("Z", "+00:00")
-                    )
-
-                    if observed.tzinfo is None:
-                        observed = observed.replace(
-                            tzinfo=timezone.utc
-                        )
-
-                    age_hours = (
-                        now_utc
-                        - observed.astimezone(timezone.utc)
-                    ).total_seconds() / 3600.0
-
-                except (TypeError, ValueError):
-                    continue
-
-                if age_hours < -0.25 or age_hours > 6.0:
-                    print(
-                        f"[HEFN] USGS {parameter_code} stale | "
-                        f"age {age_hours:.1f} h | "
-                        f"{observed_raw}",
-                        flush=True,
-                    )
-                    break
-
-                if parameter_code == "00065":
-                    result["elevation"] = round(
-                        numeric_value,
-                        2
-                    )
-
-                    print(
-                        f"[HEFN] USGS reservoir elevation | "
-                        f"{result['elevation']:.2f} ft | "
-                        f"age {age_hours:.1f} h",
-                        flush=True,
-                    )
-
-                    break
-
-                if parameter_code == "00011":
-                    if not 32.0 <= numeric_value <= 110.0:
-                        continue
-
-                    result["temp_f"] = round(
-                        numeric_value,
-                        1
-                    )
-
-                    print(
-                        f"[HEFN] USGS reservoir water temperature | "
-                        f"{result['temp_f']:.1f} F | "
-                        f"site {HEFNER_USGS_SITE} | "
-                        f"age {age_hours:.1f} h | "
-                        f"{observed_raw}",
-                        flush=True,
-                    )
-
-                    break
-
+            metric=observation['metric']
+            _observations[('HEFN',metric)]=observation
+            result['elevation' if metric=='elevation_ft' else 'temp_f']=observation['value']
     except Exception as exc:
-        print(
-            f"[HEFN] Combined USGS telemetry error: {exc}",
-            flush=True,
-        )
-
+        print(f'[HEFN] USGS retrieval failed: {type(exc).__name__}', flush=True)
     return result
 
 def get_db_connection():
@@ -1004,6 +891,7 @@ def fetch_weather_batch(lakes):
         ),
         "current": (
             "temperature_2m,"
+            "relative_humidity_2m,"
             "surface_pressure,"
             "wind_speed_10m,"
             "wind_gusts_10m,"
@@ -1015,6 +903,11 @@ def fetch_weather_batch(lakes):
         "temperature_unit": "fahrenheit",
         "wind_speed_unit": "mph",
         "precipitation_unit": "inch",
+        "hourly": "surface_pressure",
+        "minutely_15": "precipitation",
+        "past_hours": 6, "forecast_hours": 2,
+        "past_minutely_15": 8, "forecast_minutely_15": 2,
+        "timeformat": "unixtime", "timezone": "UTC",
     }
 
     try:
@@ -1054,7 +947,7 @@ def fetch_weather_batch(lakes):
             )
 
             if current:
-                result[lake["lake_code"]] = current
+                result[lake["lake_code"]] = location_data
 
         print(
             f"[Open-Meteo] Batch weather loaded for "
@@ -1075,479 +968,101 @@ def fetch_weather_batch(lakes):
 
 
 def run_sync():
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    cur.execute("""
-        SELECT
-            lake_code,
-            name,
-            latitude,
-            longitude
-        FROM lakes
-        ORDER BY lake_code;
-    """)
-    lakes = cur.fetchall()
-
-    insert_sql = """
-        INSERT INTO lake_readings (
-            timestamp, lake_code, elevation_ft, diff_from_normal_ft,
-            release_cfs, inflow_cfs, water_temp_f, air_temp_f,
-            wind_speed_mph, wind_gust_mph, wind_direction_deg,
-            surface_pressure_hpa,
-            dissolved_oxygen_mg_l,
-            cloud_cover_pct, precipitation_in, uv_index
-        ) VALUES (
-            %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s,
-            %s
-        );
-    """
-
-    now = datetime.now(timezone.utc)
-
-    # ---------------------------------------------------------
-    # Latest stored values.
-    #
-    # Used to carry forward slow-moving CWMS telemetry between
-    # actual hourly polls and to survive a transient weather/API
-    # failure without creating a mostly-null 15-minute row.
-    # ---------------------------------------------------------
-    cur.execute("""
-        SELECT
-            l.lake_code,
-            r.timestamp,
-            r.elevation_ft,
-            r.diff_from_normal_ft,
-            r.release_cfs,
-            r.inflow_cfs,
-            r.water_temp_f,
-            r.air_temp_f,
-            r.wind_speed_mph,
-            r.wind_gust_mph,
-            r.wind_direction_deg,
-            r.surface_pressure_hpa,
-            r.dissolved_oxygen_mg_l,
-            r.cloud_cover_pct,
-            r.precipitation_in,
-            r.uv_index
-
-        FROM lakes l
-
-        LEFT JOIN LATERAL (
-            SELECT
-                timestamp,
-                elevation_ft,
-                diff_from_normal_ft,
-                release_cfs,
-                inflow_cfs,
-                water_temp_f,
-                air_temp_f,
-                wind_speed_mph,
-                wind_gust_mph,
-                wind_direction_deg,
-                surface_pressure_hpa,
-                dissolved_oxygen_mg_l,
-                cloud_cover_pct,
-                precipitation_in,
-                uv_index
-
-            FROM lake_readings
-
-            WHERE lake_code = l.lake_code
-
-            ORDER BY timestamp DESC
-            LIMIT 1
-        ) r ON TRUE
-
-        ORDER BY l.lake_code;
-    """)
-
-    latest_by_lake = {
-        row["lake_code"]: row
-        for row in cur.fetchall()
-    }
-
-    # ---------------------------------------------------------
-    # Determine which CWMS lakes actually need a real API poll.
-    # ---------------------------------------------------------
-    cur.execute("""
-        SELECT lake_code, last_success
-        FROM lake_source_status
-        WHERE source = 'cwms';
-    """)
-
-    cwms_last_success = {
-        row["lake_code"]: row["last_success"]
-        for row in cur.fetchall()
-    }
-
-    cwms_due_codes = set()
-
-    for lake in lakes:
-        lake_code = lake["lake_code"]
-
-        if lake_code == "HEFN":
-            continue
-
-        last_success = cwms_last_success.get(lake_code)
-
-        if last_success is None:
-            cwms_due_codes.add(lake_code)
-            continue
-
-        try:
-            age_minutes = (
-                now
-                - last_success.astimezone(timezone.utc)
-            ).total_seconds() / 60.0
-        except Exception:
-            cwms_due_codes.add(lake_code)
-            continue
-
-        if age_minutes >= CWMS_POLL_INTERVAL_MINUTES:
-            cwms_due_codes.add(lake_code)
-
-    print(
-        f"[CWMS] Real poll due for "
-        f"{len(cwms_due_codes)} lake(s)",
-        flush=True,
-    )
-
-    # The large /levels request is only relevant when at least one
-    # lake is actually polling CWMS. fetch_cwms_levels() then applies
-    # its own 24-hour in-memory cache.
-    cwms_levels = (
-        fetch_cwms_levels()
-        if cwms_due_codes
-        else []
-    )
-
-    # ---------------------------------------------------------
-    # ONE Open-Meteo current-weather request for all lakes.
-    # ---------------------------------------------------------
-    weather_by_lake = fetch_weather_batch(lakes)
-
-    # ---------------------------------------------------------
-    # Process each lake and write the normal 15-minute DB row.
-    # ---------------------------------------------------------
-    for lake in lakes:
-        lake_code = lake["lake_code"]
-        previous = latest_by_lake.get(lake_code) or {}
-
-        water_data = {
-            "elevation": None,
-            "diff": None,
-            "release_cfs": None,
-            "inflow_cfs": None,
-            "temp_f": None,
-            "do": None,
-        }
-
-        # -----------------------------------------------------
-        # 1. Weather
-        # -----------------------------------------------------
-        w_data = weather_by_lake.get(lake_code) or {}
-
-        if w_data:
-            mark_source_success(
-                cur,
-                lake_code,
-                "weather",
-                now,
-            )
-        else:
-            # API failure fallback: carry forward the previous
-            # weather observation while leaving source freshness
-            # untouched.
-            w_data = {
-                "temperature_2m": previous.get(
-                    "air_temp_f"
-                ),
-                "wind_speed_10m": previous.get(
-                    "wind_speed_mph"
-                ),
-                "wind_gusts_10m": previous.get(
-                    "wind_gust_mph"
-                ),
-                "wind_direction_10m": previous.get(
-                    "wind_direction_deg"
-                ),
-                "surface_pressure": previous.get(
-                    "surface_pressure_hpa"
-                ),
-                "cloud_cover": previous.get(
-                    "cloud_cover_pct"
-                ),
-                "precipitation": previous.get(
-                    "precipitation_in"
-                ),
-                "uv_index": previous.get(
-                    "uv_index"
-                ),
-            }
-
-            print(
-                f"[{lake_code}] Weather API unavailable; "
-                f"carrying forward previous stored values",
-                flush=True,
-            )
-
-        # -----------------------------------------------------
-        # 2. Lake Hefner: ONE USGS request for elevation + temp
-        # -----------------------------------------------------
-        if lake_code == "HEFN":
-            hefner = fetch_hefner_telemetry()
-
-            elevation = hefner.get("elevation")
-            hefner_temp = hefner.get("temp_f")
-
-            if elevation is not None:
-                water_data["elevation"] = elevation
-                water_data["diff"] = round(
-                    elevation - HEFNER_NORMAL_POOL_FT,
-                    2,
-                )
-
-                print(
-                    f"[HEFN] USGS elevation "
-                    f"{elevation:.2f} ft | "
-                    f"reference {HEFNER_NORMAL_POOL_FT:.2f} ft | "
-                    f"diff {water_data['diff']:+.2f} ft",
-                    flush=True,
-                )
-            else:
-                print(
-                    "[HEFN] USGS elevation unavailable",
-                    flush=True,
-                )
-
-            if hefner_temp is not None:
-                water_data["temp_f"] = hefner_temp
-
-            if (
-                elevation is not None
-                or hefner_temp is not None
-            ):
-                mark_source_success(
-                    cur,
-                    lake_code,
-                    "usgs",
-                    now,
-                )
-
-        # -----------------------------------------------------
-        # 3. CWMS reservoirs
-        # -----------------------------------------------------
-        else:
-            if lake_code in cwms_due_codes:
-                actual_cwms_success = False
-
-                # -----------------------------
-                # Elevation
-                # -----------------------------
-                elevation = fetch_cwms_elevation(
-                    lake_code
-                )
-
+    conn=get_db_connection()
+    try:
+        ensure_quality_schema(conn)
+        cur=conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute('SELECT lake_code, latitude, longitude FROM lakes ORDER BY lake_code')
+        lakes=cur.fetchall()
+        now=datetime.now(timezone.utc)
+        _observations.clear()
+        weather=fetch_weather_batch(lakes)
+        cur.execute("SELECT lake_code,last_success FROM lake_source_status WHERE source='cwms'")
+        previous_poll={r['lake_code']:r['last_success'] for r in cur.fetchall()}
+        cur.execute("SELECT DISTINCT lake_code FROM lake_metric_state WHERE source='cwms'")
+        initialized={r['lake_code'] for r in cur.fetchall()}
+        due={l['lake_code'] for l in lakes if l['lake_code']!='HEFN' and
+             (l['lake_code'] not in initialized or l['lake_code'] not in previous_poll or
+              (now-previous_poll[l['lake_code']]).total_seconds()>=3600)}
+        levels=fetch_cwms_levels()
+        field_map={'temperature_2m':'air_temp_f','relative_humidity_2m':'relative_humidity_pct',
+                   'surface_pressure':'surface_pressure_hpa','wind_speed_10m':'wind_speed_mph',
+                   'wind_gusts_10m':'wind_gust_mph','wind_direction_10m':'wind_direction_deg',
+                   'cloud_cover':'cloud_cover_pct','precipitation':'precipitation_in','uv_index':'uv_index'}
+        for lake in lakes:
+            code=lake['lake_code']; payload=weather.get(code) or {}; current=payload.get('current') or {}
+            observed=current.get('time')
+            if is_fresh(observed,now,1):
+                for provider_field,metric in field_map.items():
+                    value=valid_value(metric,current.get(provider_field))
+                    if value is not None:
+                        _observations[(code,metric)]=dict(metric=metric,value=value,source='weather',
+                            observed_at=utc(observed),payload={'provider':'open-meteo',
+                            'units':payload.get('current_units',{}).get(provider_field),
+                            'current':current,'latitude':payload.get('latitude'),
+                            'longitude':payload.get('longitude'),'elevation':payload.get('elevation')})
+                mark_source_success(cur,code,'weather',now)
+            if code=='HEFN':
+                telemetry=fetch_hefner_telemetry()
+                if any(v is not None for v in telemetry.values()):
+                    mark_source_success(cur,code,'usgs',now)
+                if telemetry['elevation'] is not None:
+                    _observations[(code,'diff_from_normal_ft')]=dict(
+                        metric='diff_from_normal_ft',value=telemetry['elevation']-HEFNER_NORMAL_POOL_FT,
+                        source='usgs',observed_at=_observations[(code,'elevation_ft')]['observed_at'],
+                        payload={'reference_ft':HEFNER_NORMAL_POOL_FT,'reference':'Hefner normal pool'})
+            elif code in due:
+                elevation=fetch_cwms_elevation(code)
                 if elevation is not None:
-                    actual_cwms_success = True
-                    water_data["elevation"] = elevation
-
-                    reference = fetch_cwms_reference_level(
-                        lake_code,
-                        now,
-                        cwms_levels,
-                    )
-
+                    reference=fetch_cwms_reference_level(code,now,levels)
                     if reference is not None:
-                        water_data["diff"] = round(
-                            elevation - reference,
-                            2,
-                        )
-
-                        print(
-                            f"[{lake_code}] CWMS elevation "
-                            f"{elevation:.2f} ft | "
-                            f"reference {reference:.2f} ft | "
-                            f"diff {water_data['diff']:+.2f} ft",
-                            flush=True,
-                        )
-
-                    else:
-                        old_elevation = previous.get(
-                            "elevation_ft"
-                        )
-                        old_diff = previous.get(
-                            "diff_from_normal_ft"
-                        )
-
-                        if (
-                            old_elevation is not None
-                            and old_diff is not None
-                        ):
-                            previous_reference = (
-                                float(old_elevation)
-                                - float(old_diff)
-                            )
-
-                            water_data["diff"] = round(
-                                elevation
-                                - previous_reference,
-                                2,
-                            )
-
-                            print(
-                                f"[{lake_code}] CWMS elevation "
-                                f"{elevation:.2f} ft | "
-                                f"reference "
-                                f"{previous_reference:.2f} ft "
-                                f"(cached DB reference) | "
-                                f"diff "
-                                f"{water_data['diff']:+.2f} ft",
-                                flush=True,
-                            )
-
-                else:
-                    # Preserve last valid hydrology value in the new
-                    # 15-minute row, but do not refresh cwms freshness.
-                    water_data["elevation"] = previous.get(
-                        "elevation_ft"
-                    )
-                    water_data["diff"] = previous.get(
-                        "diff_from_normal_ft"
-                    )
-
-                    print(
-                        f"[{lake_code}] CWMS elevation unavailable; "
-                        f"carrying forward previous value",
-                        flush=True,
-                    )
-
-                # -----------------------------
-                # Inflow / release
-                # -----------------------------
-                inflow = fetch_cwms_flow(
-                    lake_code,
-                    "inflow",
-                )
-
-                release = fetch_cwms_flow(
-                    lake_code,
-                    "release",
-                )
-
-                if inflow is not None:
-                    actual_cwms_success = True
-                    water_data["inflow_cfs"] = inflow
-                else:
-                    water_data["inflow_cfs"] = previous.get(
-                        "inflow_cfs"
-                    )
-
-                if release is not None:
-                    actual_cwms_success = True
-                    water_data["release_cfs"] = release
-                else:
-                    water_data["release_cfs"] = previous.get(
-                        "release_cfs"
-                    )
-
-                if actual_cwms_success:
-                    mark_source_success(
-                        cur,
-                        lake_code,
-                        "cwms",
-                        now,
-                    )
-
-                print(
-                    f"[{lake_code}] CWMS poll | "
-                    f"inflow={water_data['inflow_cfs']} cfs | "
-                    f"release={water_data['release_cfs']} cfs",
-                    flush=True,
-                )
-
-            else:
-                # Hourly CWMS series do not need to be downloaded again
-                # on every 15-minute database cycle.
-                water_data["elevation"] = previous.get(
-                    "elevation_ft"
-                )
-                water_data["diff"] = previous.get(
-                    "diff_from_normal_ft"
-                )
-                water_data["inflow_cfs"] = previous.get(
-                    "inflow_cfs"
-                )
-                water_data["release_cfs"] = previous.get(
-                    "release_cfs"
-                )
-
-                last_success = cwms_last_success.get(
-                    lake_code
-                )
-
-                if last_success is not None:
-                    try:
-                        source_age = (
-                            now
-                            - last_success.astimezone(
-                                timezone.utc
-                            )
-                        ).total_seconds() / 60.0
-
-                        age_text = (
-                            f"{source_age:.0f} min"
-                        )
-                    except Exception:
-                        age_text = "unknown"
-                else:
-                    age_text = "unknown"
-
-                print(
-                    f"[{lake_code}] CWMS reuse | "
-                    f"source age {age_text} | "
-                    f"inflow={water_data['inflow_cfs']} cfs | "
-                    f"release={water_data['release_cfs']} cfs",
-                    flush=True,
-                )
-
-        # -----------------------------------------------------
-        # 4. Store normal 15-minute reading
-        # -----------------------------------------------------
-        cur.execute(
-            insert_sql,
-            (
-                now,
-                lake_code,
-                water_data["elevation"],
-                water_data["diff"],
-                water_data["release_cfs"],
-                water_data["inflow_cfs"],
-                water_data["temp_f"],
-                w_data.get("temperature_2m"),
-                w_data.get("wind_speed_10m"),
-                w_data.get("wind_gusts_10m"),
-                w_data.get("wind_direction_10m"),
-                w_data.get("surface_pressure"),
-                water_data["do"],
-                w_data.get("cloud_cover"),
-                w_data.get("precipitation"),
-                w_data.get("uv_index"),
-            ),
-        )
-
-
-        print(
-            f"[{lake_code}] Sync complete",
-            flush=True,
-        )
-
-    conn.commit()
-    cur.close()
-    conn.close()
+                        _observations[(code,'diff_from_normal_ft')]=dict(
+                            metric='diff_from_normal_ft',value=round(elevation-reference,2),source='cwms',
+                            observed_at=_observations[(code,'elevation_ft')]['observed_at'],
+                            payload={'reference_ft':reference,'reference':'CWMS applicable operating level',
+                                     'evaluated_at':now.isoformat()})
+                fetch_cwms_flow(code,'inflow'); fetch_cwms_flow(code,'release')
+                if any(k[0]==code and v['source']=='cwms' for k,v in _observations.items()):
+                    mark_source_success(cur,code,'cwms',now)
+            for (lake_code,metric),observation in list(_observations.items()):
+                if lake_code==code:
+                    record_observation(cur,code,observation,now)
+            cur.execute('SELECT * FROM lake_metric_state WHERE lake_code=%s',(code,))
+            state={r['metric']:r for r in cur.fetchall()}
+            values={};quality={}
+            for metric,record in state.items():
+                max_age=1 if record['source']=='weather' else (6 if record['source']=='usgs' else 4)
+                fresh=is_fresh(record['observed_at'],now,max_age)
+                values[metric]=record['value'] if fresh else None
+                quality[metric]={'source':record['source'],'observed_at':record['observed_at'].isoformat(),
+                    'retrieved_at':record['retrieved_at'].isoformat(),'fresh':fresh,
+                    'carried_forward':(code,metric) not in _observations,
+                    'source_metadata':record['payload']}
+            hourly=payload.get('hourly',{});quarter=payload.get('minutely_15',{})
+            if code != 'HEFN' and values.get('elevation_ft') is not None:
+                reference=fetch_cwms_reference_level(code,now,levels)
+                if reference is not None:
+                    values['diff_from_normal_ft']=round(float(values['elevation_ft'])-reference,2)
+                    quality['diff_from_normal_ft']=dict(quality.get('elevation_ft',{}))
+                    quality['diff_from_normal_ft']['source_metadata']={'reference_ft':reference,
+                        'evaluated_at':now.isoformat(),'reference':'CWMS applicable operating level'}
+            values['pressure_delta_3h']=pressure_delta(hourly.get('time',[]),hourly.get('surface_pressure',[]),observed) if observed else None
+            values['precipitation_1h_in']=rain_hour(quarter.get('time',[]),quarter.get('precipitation',[]),observed) if observed else None
+            for metric in ['pressure_delta_3h','precipitation_1h_in']:
+                quality[metric]={'source':'weather','observed_at':utc(observed).isoformat() if observed else None,
+                    'fresh':is_fresh(observed,now,1) and values[metric] is not None,
+                    'window_hours':3 if metric=='pressure_delta_3h' else 1}
+                if not quality[metric]['fresh']:
+                    values[metric]=None
+            fields=list(field_map.values())+['elevation_ft','diff_from_normal_ft','inflow_cfs',
+                     'release_cfs','water_temp_f','pressure_delta_3h','precipitation_1h_in']
+            cur.execute('INSERT INTO lake_readings (timestamp,lake_code,'+','.join(fields)+',quality) VALUES ('+
+                        ','.join(['%s']*(len(fields)+3))+')',
+                        [now,code]+[values.get(f) for f in fields]+[json.dumps(quality,default=str)])
+            print(f'[{code}] Sync | fresh metrics {sum(v is not None for v in values.values())}',flush=True)
+            conn.commit()  # A single lake failure cannot roll back earlier valid observations.
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     print(
@@ -1559,6 +1074,7 @@ if __name__ == "__main__":
     schema_conn = get_db_connection()
 
     try:
+        ensure_quality_schema(schema_conn)
         ensure_source_status_table(schema_conn)
         ensure_app_sync_state_table(schema_conn)
 
@@ -1606,4 +1122,3 @@ if __name__ == "__main__":
         )
 
         time.sleep(900)
-
