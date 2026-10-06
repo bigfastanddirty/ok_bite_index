@@ -375,7 +375,7 @@
         <div id="bestWindowCard" class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 shadow-xl">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <div class="text-[10px] xl:text-xs 2xl:text-sm font-bold uppercase tracking-widest text-slate-400">Best Fishing Window · Next 24 Hours</div>
+                    <div class="text-[10px] xl:text-xs 2xl:text-sm font-bold uppercase tracking-widest text-slate-400">Best 3-hour Window · Next 24 Hours</div>
                     <div id="bestWindowTime" class="text-lg sm:text-xl font-black text-sky-300 mt-1">Calculating...</div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -384,6 +384,11 @@
                         <div id="bestWindowScore" class="font-mono font-black text-lg text-slate-200">--/100</div>
                     </div>
                     <span id="bestWindowRating" class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-950 text-xs xl:text-sm 2xl:text-base font-black text-slate-300">--</span>
+                </div>
+                <div class="sm:border-l sm:border-slate-800 sm:pl-4">
+                    <div class="text-[10px] xl:text-xs 2xl:text-sm font-bold uppercase tracking-widest text-slate-400">Peak Hour · Next 24 Hours</div>
+                    <div id="peakHourTime" class="text-base sm:text-lg font-bold text-amber-300 mt-1">Calculating...</div>
+                    <div id="peakHourScore" class="font-mono text-sm font-bold text-slate-200">--/100</div>
                 </div>
             </div>
         </div>
@@ -394,11 +399,11 @@
 
             <div class="lg:col-span-3 flex">
             <!-- Card 1: Tactical Bite Index & Strategy -->
-            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-5 shadow-xl flex flex-col justify-between h-full">
+            <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col gap-4 w-full h-full">
                 <div>
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-3">
                         <span class="text-[10px] xl:text-xs 2xl:text-sm font-bold tracking-widest text-slate-400 uppercase">Current Tactical Rating</span>
-                        <span id="biteScore" class="text-slate-300 font-mono text-sm xl:text-base 2xl:text-lg font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800/80">--/100</span>
+                        <span id="biteScore" class="shrink-0 text-slate-300 font-mono text-sm xl:text-base 2xl:text-lg font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800/80">--/100</span>
                     </div>
                     <div class="mt-2">
                         <span id="biteRating" class="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight block">FAIR BITE</span>
@@ -407,7 +412,7 @@
                 </div>
 
                 <!-- Overall Bite Index explanation -->
-                <div class="bg-slate-950/70 rounded-xl p-3 border border-slate-800/80 mt-4">
+                <div class="bg-slate-950/70 rounded-xl p-3 border border-slate-800/80">
                     <details class="group">
                         <summary class="cursor-pointer select-none flex items-center justify-between gap-3
                                        text-[10px] xl:text-xs 2xl:text-sm font-bold uppercase tracking-wider
@@ -438,7 +443,7 @@
                     </details>
                 </div>
 
-                <div class="bg-slate-950/70 rounded-xl p-3 border border-slate-800/80 mt-4 space-y-3">
+                <div class="bg-slate-950/70 rounded-xl p-3 border border-slate-800/80 space-y-3">
                     <div>
                         <span class="text-[10px] xl:text-xs 2xl:text-sm font-bold uppercase tracking-wider text-emerald-400 block mb-1">
                             Primary Target Species
@@ -530,7 +535,7 @@
                         </span>
 
                         <p class="text-[10px] xl:text-xs 2xl:text-sm text-slate-500 mt-1 mb-4">
-                            Broader positioning and environmental context
+                            Current lake conditions and positioning context
                         </p>
 
                     </div>
@@ -583,11 +588,10 @@
                         <span class="text-[10px] xl:text-xs 2xl:text-sm sm:text-[11px] xl:text-xs 2xl:text-sm font-semibold text-slate-400 uppercase tracking-wider block truncate">Outflow / Tailrace</span>
                         <span id="releaseVal" class="text-sm xl:text-base 2xl:text-lg sm:text-base font-bold font-mono text-slate-200 block mt-0.5">-- CFS</span>
                     </div>
-                </div>
-
-                <div class="flex items-center justify-between text-xs xl:text-sm 2xl:text-base text-slate-400 border-t border-slate-800/60 pt-3 mt-4">
-                    <span>24h Water Level Delta:</span>
-                    <span id="elevDelta24" class="font-mono font-bold text-slate-300">--</span>
+                    <div class="bg-slate-950/60 p-3 sm:p-3.5 min-h-[82px] rounded-xl border border-slate-800/80 flex flex-col justify-center">
+                        <span class="text-[10px] xl:text-xs 2xl:text-sm font-semibold text-slate-400 uppercase tracking-wider block">24-hour Pool Change</span>
+                        <span id="elevDelta24" class="font-mono font-bold text-sm xl:text-base 2xl:text-lg text-slate-300 block mt-0.5">--</span>
+                    </div>
                 </div>
             </div>
             </div>
@@ -715,6 +719,8 @@
         }
 
         let currentLake = '';
+        let lakeLoadGeneration = 0;
+        let chartLoadGeneration = 0;
         let chartDays = 7;
         let chartInstance = null;
         let latestAnalysis = null;
@@ -787,6 +793,9 @@
 
         async function loadSelectedLakeData() {
             if (!currentLake) return;
+            const requestLake = currentLake;
+            const generation = ++lakeLoadGeneration;
+            const active = () => generation === lakeLoadGeneration && requestLake === currentLake;
 
             const refreshBtn = document.getElementById('refreshBtn');
             const svgIcon = refreshBtn ? refreshBtn.querySelector('svg') : null;
@@ -798,22 +807,29 @@
             const cacheBust = `_t=${Date.now()}`;
 
             try {
-                const res = await fetch(`/api/lakes/${currentLake}/analysis?${cacheBust}`);
-                latestAnalysis = await res.json();
+                const res = await fetch(`/api/lakes/${requestLake}/analysis?${cacheBust}`);
+                if (!res.ok) throw new Error(`Analysis HTTP ${res.status}`);
+                const analysis = await res.json();
+                if (!active()) return;
+                latestAnalysis = analysis;
                 updateOverviewUI(latestAnalysis);
 
                 // Alerts are embedded in the analysis response.
                 loadLakeAlerts(
-                    currentLake,
+                    requestLake,
                     latestAnalysis.lake_alerts || []
                 );
             } catch (e) {
+                if (!active()) return;
                 console.error("Error loading lake analysis:", e);
+                updateOverviewUI({bite_score:null, bite_rating:'UNAVAILABLE', analysis_commentary:'Fresh data unavailable.'});
             }
 
             try {
-                const fRes = await fetch(`/api/lakes/${currentLake}/forecast?${cacheBust}`);
+                const fRes = await fetch(`/api/lakes/${requestLake}/forecast?${cacheBust}`);
+                if (!fRes.ok) throw new Error(`Forecast HTTP ${fRes.status}`);
                 const fData = await fRes.json();
+                if (!active()) return;
                 const fList = fData.forecast || [];
                 renderForecastStrip(fList);
 
@@ -822,14 +838,24 @@
                 const bwTime = document.getElementById('bestWindowTime');
                 const bwScore = document.getElementById('bestWindowScore');
                 const bwRating = document.getElementById('bestWindowRating');
+                const fmt = d => d && !isNaN(d.getTime())
+                    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                    : '--';
+                const dated = d => d && !isNaN(d.getTime())
+                    ? `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmt(d)}`
+                    : '--';
+                // Match the window calculation's next 24 future forecast hours.
+                const futureHours = fList.filter(c => new Date(c.time).getTime() >= Date.now()).slice(0, 24);
+                const peak = futureHours.reduce((bestHour, hour) =>
+                    typeof hour.bite_score === 'number' && Number.isFinite(hour.bite_score) &&
+                    (!bestHour || hour.bite_score > bestHour.bite_score) ? hour : bestHour, null);
+                document.getElementById('peakHourTime').textContent = peak ? dated(new Date(peak.time)) : 'Unavailable';
+                document.getElementById('peakHourScore').textContent = peak ? `${Math.round(peak.bite_score)}/100` : '--';
 
                 if (best && bwTime && bwScore && bwRating) {
                     const start = best.start ? new Date(best.start) : null;
                     const end = best.end ? new Date(best.end) : null;
-                    const fmt = d => d && !isNaN(d.getTime())
-                        ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                        : '--';
-                    bwTime.textContent = `${fmt(start)} – ${fmt(end)}`;
+                    bwTime.textContent = `${dated(start)} – ${start && end && start.toDateString() === end.toDateString() ? fmt(end) : dated(end)}`;
                     bwScore.textContent = `${Math.round(Number(best.average_score || 0))}/100`;
                     bwRating.textContent = best.rating || '--';
 
@@ -841,19 +867,20 @@
                     } else {
                         bwRating.className = 'px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs xl:text-sm 2xl:text-base font-black text-rose-300';
                     }
+                } else {
+                    if (bwTime) bwTime.textContent='Unavailable';
+                    if (bwScore) bwScore.textContent='--';
+                    if (bwRating) bwRating.textContent='DATA UNAVAILABLE';
                 }
 
-                const humEl = document.getElementById('humidityVal');
-                if (humEl && fList.length > 0) {
-                    if (!latestAnalysis || latestAnalysis.relative_humidity_pct === null || latestAnalysis.relative_humidity_pct === undefined) {
-                        const curHum = fList[0].relative_humidity_pct;
-                        if (curHum !== null && curHum !== undefined) {
-                            humEl.textContent = `${Math.round(Number(curHum))}%`;
-                        }
-                    }
-                }
             } catch (e) {
+                if (!active()) return;
                 console.error("Error loading forecast:", e);
+                document.getElementById('bestWindowTime').textContent='Unavailable';
+                document.getElementById('bestWindowScore').textContent='--';
+                document.getElementById('bestWindowRating').textContent='DATA UNAVAILABLE';
+                document.getElementById('peakHourTime').textContent='Unavailable';
+                document.getElementById('peakHourScore').textContent='--';
                 const fc = document.getElementById('forecastContainer');
                 if (fc) fc.innerHTML = `<div class="text-xs xl:text-sm 2xl:text-base text-red-400 py-4 px-2">Unable to load forecast data for this station.</div>`;
             }
@@ -861,6 +888,7 @@
             await loadChartData();
 
             setTimeout(() => {
+                if (!active()) return;
                 if (svgIcon) svgIcon.classList.remove('animate-spin');
                 if (rDot) rDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
             }, 400);
@@ -993,9 +1021,9 @@ function updateOverviewUI(data) {
             const bAnalysis = document.getElementById('biteAnalysis');
             const tAnalysis = document.getElementById('tacticAnalysis');
             const targetSp = document.getElementById('targetSpecies');
-            const sc = Math.round(data.bite_score || 0);
+            const sc = data.bite_score == null ? null : Math.round(data.bite_score);
 
-            let biteTitle = 'TOUGH BITE';
+            let biteTitle = sc === null ? 'DATA UNAVAILABLE' : 'TOUGH BITE';
             let titleColorClass = 'text-rose-400 font-black text-2xl sm:text-3xl tracking-tight block';
 
             if (sc >= 80) {
@@ -1014,7 +1042,8 @@ function updateOverviewUI(data) {
                 bRating.className = titleColorClass;
             }
             if (bScore) {
-                bScore.textContent = `${sc}/100`;
+                bScore.textContent = sc === null ? '--' : `${sc}/100`;
+                bScore.title = 'Relative conditions index; not a validated catch probability';
             }
 
             const phaseBadge = document.getElementById('seasonalPhaseBadge');
@@ -1293,7 +1322,7 @@ function updateOverviewUI(data) {
                     : 'pool N/A';
                 const flow = data.inflow_cfs != null ? `${Math.round(Number(data.inflow_cfs)).toLocaleString()} CFS inflow` : 'inflow N/A';
                 const clouds = data.cloud_cover_pct != null ? `${Math.round(Number(data.cloud_cover_pct))}% clouds` : 'clouds N/A';
-                statusSummary.textContent = `${wt} water · ${diff} vs normal · ${flow} · ${clouds} · ${String(data.solunar_window || 'none').toLowerCase()} solunar`;
+                statusSummary.textContent = `${wt} water · ${diff} vs normal · ${flow} · ${clouds} · ${String(data.solunar_window || 'unavailable').toLowerCase()} solunar`;
             }
 
             const fresh = data.source_freshness || {};
@@ -1465,7 +1494,7 @@ function updateOverviewUI(data) {
                         .filter(Boolean);
 
                     const rows = sentences.map((sentence, idx) => {
-                        let label = idx === sentences.length - 1 ? 'Lake Pattern' : 'Target';
+                        let label = 'Lake Pattern';
 
                         const match = sentence.match(/^For\s+([^,]+(?:\s+[^,]+)*),\s*(.*)$/i);
 
@@ -1530,7 +1559,7 @@ function updateOverviewUI(data) {
             }
 
             if (bAnalysis) {
-                bAnalysis.textContent = data.analysis_commentary ? data.analysis_commentary : "Stable seasonal pattern. Focus on main lake points, drop-offs, and transition ledges.";
+                bAnalysis.textContent = data.analysis_commentary ? data.analysis_commentary : "Strategy unavailable; confirm current lake conditions before choosing a pattern.";
             }
 
             const poolEl = document.getElementById('poolStatus');
@@ -1645,13 +1674,15 @@ function updateOverviewUI(data) {
 
             if (eDelta24) {
                 const rawDelta = data.elevation_delta_24h;
-                if (rawDelta !== null && rawDelta !== undefined) {
+                if (rawDelta !== null && rawDelta !== undefined && Number.isFinite(Number(rawDelta))) {
                     const d24 = Number(rawDelta);
                     const dSign = d24 > 0 ? `+${d24.toFixed(2)}` : d24.toFixed(2);
                     eDelta24.textContent = `${dSign} ft`;
-                    eDelta24.className = d24 > 0.02 ? "font-mono font-bold text-sky-400" : (d24 < -0.02 ? "font-mono font-bold text-amber-400" : "font-mono font-bold text-slate-300");
+                    const color = d24 > 0.02 ? 'text-sky-400' : (d24 < -0.02 ? 'text-amber-400' : 'text-slate-300');
+                    eDelta24.className = `font-mono font-bold text-sm xl:text-base 2xl:text-lg block mt-0.5 ${color}`;
                 } else {
                     eDelta24.textContent = "--";
+                    eDelta24.className = 'font-mono font-bold text-sm xl:text-base 2xl:text-lg block mt-0.5 text-slate-300';
                 }
             }
 
@@ -1724,14 +1755,14 @@ function updateOverviewUI(data) {
 
             if (moonVal) {
                 const lunarObj = data.lunar || {};
-                const phase = lunarObj.phase_name || data.moon_phase || 'Waning Gibbous';
+                const phase = lunarObj.phase_name || data.moon_phase || 'Unavailable';
                 
                 let rawIllum = lunarObj.illumination ?? lunarObj.illumination_pct ?? data.moon_illumination ?? data.moon_illumination_pct;
                 
                 let illumStr = '';
                 if (rawIllum !== null && rawIllum !== undefined && rawIllum !== '') {
                     let num = Number(rawIllum);
-                    if (num > 0 && num <= 1.0) num = num * 100;
+                    if (lunarObj.illumination_pct === undefined && num > 0 && num <= 1.0) num = num * 100;
                     illumStr = ` (${Math.round(num)}%)`;
                 }
 
@@ -1782,11 +1813,11 @@ function updateOverviewUI(data) {
                 const d = rawTime ? new Date(rawTime.includes('T') ? rawTime : rawTime.replace(' ', 'T')) : new Date();
                 
                 const hourStr = !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: 'numeric' }) : '--';
-                const dayStr = index === 0 ? 'NOW' : (!isNaN(d.getTime()) ? d.toLocaleDateString([], { weekday: 'short' }) : '');
+                const dayStr = index === 0 ? 'NEXT' : (!isNaN(d.getTime()) ? d.toLocaleDateString([], { weekday: 'short' }) : '');
                 
-                const score = Math.round(Number(item.bite_score ?? 0));
+                const score = item.bite_score == null ? null : Math.round(Number(item.bite_score));
                 
-                let rating = 'TOUGH';
+                let rating = score === null ? 'UNAVAILABLE' : 'TOUGH';
                 let borderHighlight = 'border-rose-500/20';
                 let ratingBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
 
@@ -1804,16 +1835,16 @@ function updateOverviewUI(data) {
                     ratingBadge = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
                 }
 
-                const airTemp = Math.round(Number(item.air_temp_f ?? 0));
+                const airTemp = item.air_temp_f == null ? '--' : Math.round(Number(item.air_temp_f));
                 
-                const pDeltaNum = Number(item.delta_pressure_2h ?? item.pressure_delta_2h ?? item.delta_pressure_3h ?? 0);
-                const pDeltaSign = pDeltaNum > 0 ? `+${pDeltaNum.toFixed(1)}` : pDeltaNum.toFixed(1);
+                const pDeltaNum = item.delta_pressure_3h == null ? null : Number(item.delta_pressure_3h);
+                const pDeltaSign = pDeltaNum === null ? '--' : (pDeltaNum > 0 ? `+${pDeltaNum.toFixed(1)}` : pDeltaNum.toFixed(1));
                 let pDeltaColor = 'text-emerald-400';
                 if (pDeltaNum < -0.3) pDeltaColor = 'text-amber-400';
                 else if (pDeltaNum > 0.3) pDeltaColor = 'text-sky-400';
 
-                const windSpd = Math.round(Number(item.wind_speed_mph ?? 0));
-                const windGust = Math.round(Number(item.wind_gust_mph ?? windSpd));
+                const windSpd = item.wind_speed_mph == null ? '--' : Math.round(Number(item.wind_speed_mph));
+                const windGust = item.wind_gust_mph == null ? '--' : Math.round(Number(item.wind_gust_mph));
                 const precipProb = Math.round(Number(item.precip_prob_pct ?? 0));
 
                 let rainHtml = '';
@@ -1860,10 +1891,13 @@ function updateOverviewUI(data) {
 
         async function loadChartData() {
             if (!currentLake) return;
+            const requestLake=currentLake, requestDays=chartDays;
+            const generation=++chartLoadGeneration;
 
             try {
-                const res = await fetch(`/api/lakes/${currentLake}/history?days=${chartDays}&_t=${Date.now()}`);
+                const res = await fetch(`/api/lakes/${requestLake}/history?days=${requestDays}&_t=${Date.now()}`);
                 const data = await res.json();
+                if (generation!==chartLoadGeneration || requestLake!==currentLake || requestDays!==chartDays) return;
                 const history = Array.isArray(data) ? data : (data.history || data.readings || []);
                 lastHistoryData = history;
                 renderChart(lastHistoryData);
@@ -1946,8 +1980,8 @@ function updateOverviewUI(data) {
 
                 if (normalPool !== null) {
                     datasets.push({
-                        label: `Normal Pool (${normalPool.toFixed(1)} ft)`,
-                        data: history.map(() => normalPool),
+                        label: `Applied operating reference`,
+                        data: history.map(h => h.normal_pool_ft ?? null),
                         borderColor: '#94a3b8',
                         borderWidth: 1.5,
                         borderDash: [6, 4],
