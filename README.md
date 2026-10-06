@@ -22,10 +22,12 @@ OK Bite Index combines real-time hydrological and weather observations with lake
 - Inflow and dam release monitoring where available
 - Water temperature and water-quality observations where available
 - Dynamic 0–100 Bite Index
-- Target-species rankings and confidence scores
+- Target-species rankings and explainable heuristic scores
 - Condition-based fishing tactics
 - Seasonal fishing-pattern analysis
-- Best fishing window for the next 24 hours
+- Best three-hour fishing window and peak individual hour for the next 24 hours
+- Per-metric source provenance and bounded data freshness
+- Archived source observations and issued forecast/analysis snapshots
 - ODWC fishing regulations and lake-species information
 - Data-source freshness monitoring
 - Related-project alerts
@@ -42,7 +44,7 @@ USGS monitoring stations provide available hydrological and water-quality observ
 - Water temperature
 - Dissolved oxygen
 
-Available parameters vary by lake and monitoring station.
+Available parameters vary by lake and monitoring station. Hefner uses the modern USGS Water Data API with explicit reservoir-elevation and tower-temperature series identifiers, parameter codes, and units. Alternate elevation series are excluded. An optional `USGS_API_KEY` can be provided in `.env`.
 
 ### USACE
 
@@ -75,7 +77,7 @@ Related-project ingestion is currently limited to **Arcadia Lake**.
 
 ## Bite Index
 
-The Bite Index is a dynamic score from **0–100** representing the estimated quality of current fishing conditions.
+The Bite Index is a rule-based score from **0–100** describing relative fishing conditions. Its biological weights have not been validated against catch and fishing-effort data; the score is not a catch probability.
 
 The analysis combines available environmental and lake-condition factors such as:
 
@@ -96,7 +98,7 @@ Current lake and weather conditions are evaluated to identify likely target spec
 The interface provides:
 
 - Ranked target species
-- Species confidence scores
+- Species heuristic scores, not calibrated confidence estimates
 - Condition-based ranking explanations
 - Recommended tactics
 - Seasonal fishing pattern
@@ -104,11 +106,23 @@ The interface provides:
 
 Species information links to official ODWC fishing resources where available.
 
+Both tactics and strategy use known pool and water-trend conditions. Missing readings remain unknown and do not earn ranking points. Species presentations adapt to supported conditions; estimated temperatures are qualified. Strategy provides a concise action plan without repeating telemetry or the species list. Reported inflow and dam release are distinguished from actual current at the fishing location, and a lake-wide seasonal phase does not imply verified spawning for every species.
+
 ## Fishing Forecast
 
 OK Bite Index generates a short-term fishing forecast using forecast weather conditions and environmental factors used by the Bite Index.
 
-The interface identifies the **Best Fishing Window for the Next 24 Hours**, including its estimated average Bite Index.
+The interface identifies the **Best 3-hour Window for the Next 24 Hours**, based on the strongest average across consecutive usable forecast hours, and shows the **Peak Hour** separately. Dates and times use the browser's local timezone. Past hours and windows with missing scores are excluded; missing forecasts clear the previous recommendation.
+
+Current and forecast calculations use the same three-hour pressure difference and one-hour rainfall accumulation. Solar and lunar timing use lake coordinates and PyEphem events. Forecast reservoir temperature and hydrology are held at the available current baseline rather than independently predicted.
+
+## Data Quality and Historical Records
+
+Metric state preserves observation/retrieval timestamps, source payloads, and carried-forward status. Weather inputs expire after one hour, CWMS observations after four hours, and Hefner USGS readings after six hours. Essential missing or stale weather suppresses the Bite Index instead of becoming calm wind or clear skies.
+
+The application creates additive quality fields and the `lake_metric_state`, `lake_observations`, and `bite_predictions` tables at startup. Source observations and revisions are retained separately. Backfill reanalysis does not overwrite an existing live weather reading, and older observations cannot replace newer metric state.
+
+Historical charts use the reference applied to each observation rather than assuming a static nominal pool. Stored history predating quality tracking cannot gain missing provenance retroactively. Failed regulations parsing preserves existing text; current legal rules should still be checked with ODWC.
 
 ## Related Projects
 
@@ -208,6 +222,7 @@ POSTGRES_PASSWORD=<POSTGRES PW>
 POSTGRES_DB=ok_fishing_db
 TZ=America/Chicago
 DOCKER_ROOT=<Data Location>
+USGS_API_KEY=
 ```
 
 ## Deployment
@@ -378,6 +393,29 @@ Major components include:
 - Related Projects
 
 The interface automatically adapts between desktop, tablet, and mobile screen sizes.
+
+Water Quality & Pool includes a signed, color-coded **24-hour Pool Change** tile. Missing deltas remain unavailable rather than becoming zero.
+
+## Verification
+
+Run the Python regression suite with the web image's installed dependencies:
+
+```bash
+docker compose --env-file .env run --rm --no-deps \
+  -v "$PWD:/review:ro" --entrypoint python web \
+  -m unittest discover -s /review/tests -v
+```
+
+The suite covers source freshness and validation, consistent pressure/rainfall intervals, solar/lunar events, future fishing windows, unavailable inputs, and coherent tactics under low, falling, unknown, and estimated conditions.
+
+The optional browser checks require Node.js, Playwright and Chromium installed in your test environment. They use `BASE_URL` (default `http://127.0.0.1:8088/`), `PLAYWRIGHT_MODULE` (default `playwright`) and optional `CHROMIUM_EXECUTABLE` overrides:
+
+```bash
+node tests/browser-smoke.cjs
+node tests/browser-window.cjs
+```
+
+The persistence integration script is separate from test discovery and refuses to run unless the database is named `accuracy_test`. Use `tests/schema.sql` only to initialize a fresh disposable test database. `tests/integration_persistence.py` verifies observation deduplication, newer-state preservation and non-overwriting reanalysis, and rolls back its test transaction. Never initialize the fixture in your production database.
 
 ## API
 
