@@ -93,7 +93,7 @@ def extract_regs_from_html(html_text):
         if result and len(result) > 15:
             return result
 
-    return "Statewide general limits apply (no special area restrictions listed)."
+    return None
 
 def crawl_odwc_directory():
     base_url = "https://www.wildlifedepartment.com"
@@ -147,6 +147,9 @@ def sync_odwc_regs(conn):
             r = requests.get(target_url, headers=HEADERS, timeout=12)
             if r.status_code == 200:
                 regs_text = extract_regs_from_html(r.text)
+                if regs_text is None:
+                    print(f'[{code}] Regulations extraction unavailable; preserving previous value',flush=True)
+                    continue
                 cur.execute(
                     "UPDATE lakes SET special_regulations = %s WHERE lake_code = %s;",
                     (regs_text, code)
