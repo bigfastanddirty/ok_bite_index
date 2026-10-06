@@ -26,3 +26,8 @@ venv/
 *.swp
 .vscode/
 .idea/
+
+# Operational backups and database exports
+backups/
+*.dump
+*.before-*
