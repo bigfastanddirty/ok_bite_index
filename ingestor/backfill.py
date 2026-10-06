@@ -25,6 +25,7 @@ import time
 from datetime import datetime, timezone, timedelta
 
 import requests
+from quality import fetch_usgs, ensure_quality_schema, record_observation, valid_value, utc
 
 from ingest import (
     get_db_connection,
@@ -297,95 +298,14 @@ def fetch_cwms_series(series_name, unit, begin, end, lake_code, label):
     return observations
 
 
-def fetch_hefner_history(begin, end):
-    """Return {timestamp: {elevation_ft, water_temp_f}} from verified USGS reservoir telemetry."""
-    observations = {}
-    window_begin = begin
-    window_number = 0
-    window_size = timedelta(days=USGS_WINDOW_DAYS)
-
-    while window_begin < end:
-        window_end = min(window_begin + window_size, end)
-        window_number += 1
-
-        response = request_with_retry(
-            "GET",
-            "https://waterservices.usgs.gov/nwis/iv/",
-            label=f"[HEFN] USGS window {window_number}",
-            params={
-                "format": "json",
-                "sites": HEFNER_USGS_SITE,
-                "startDT": window_begin.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "endDT": window_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "parameterCd": f"{USGS_HEFNER_ELEVATION},{USGS_HEFNER_WATER_TEMP}",
-                "siteStatus": "all",
-            },
-            timeout=60,
-        )
-
-        window_count = 0
-
-        for series in response.json().get("value", {}).get("timeSeries", []):
-            variable_codes = {
-                str(item.get("value") or "").strip()
-                for item in series.get("variable", {}).get("variableCode", [])
-            }
-
-            parameter_code = None
-            if USGS_HEFNER_ELEVATION in variable_codes:
-                parameter_code = USGS_HEFNER_ELEVATION
-            elif USGS_HEFNER_WATER_TEMP in variable_codes:
-                parameter_code = USGS_HEFNER_WATER_TEMP
-
-            if parameter_code is None:
-                continue
-
-            for block in series.get("values", []):
-                for item in block.get("value", []):
-                    raw_value = item.get("value")
-                    raw_time = item.get("dateTime")
-
-                    if raw_value in (None, "", "-999999") or not raw_time:
-                        continue
-
-                    try:
-                        value = float(raw_value)
-                        ts = datetime.fromisoformat(
-                            raw_time.replace("Z", "+00:00")
-                        ).astimezone(timezone.utc)
-                    except (TypeError, ValueError):
-                        continue
-
-                    if ts < begin or ts > end:
-                        continue
-
-                    rec = observations.setdefault(
-                        ts,
-                        {"elevation_ft": None, "water_temp_f": None},
-                    )
-
-                    if parameter_code == USGS_HEFNER_ELEVATION:
-                        rec["elevation_ft"] = value
-                    else:
-                        rec["water_temp_f"] = value
-
-                    window_count += 1
-
-        print(
-            f"[HEFN] USGS window {window_number}: "
-            f"{window_begin.isoformat()} -> {window_end.isoformat()} | "
-            f"{window_count} values",
-            flush=True,
-        )
-
-        window_begin = window_end
-        time.sleep(0.15)
-
-    print(
-        f"[HEFN] USGS returned {len(observations)} unique timestamps",
-        flush=True,
-    )
-
+def fetch_hefner_history(begin,end):
+    observations={}
+    for item in fetch_usgs('continuous',begin,end):
+        ts=item['observed_at']
+        if begin<=ts<=end:
+            record=observations.setdefault(ts,{'elevation_ft':None,'water_temp_f':None,'_observations':[]})
+            record[item['metric']]=item['value']
+            record['_observations'].append(item)
     return observations
 
 
@@ -414,6 +334,9 @@ def upsert_level(cur, lake_code, ts, elevation_ft, diff_ft, dry_run):
 
 
 def upsert_hefner(cur, ts, data, dry_run):
+    if not dry_run:
+        for observation in data.get('_observations',[]):
+            record_observation(cur,'HEFN',observation,datetime.now(timezone.utc),update_state=False)
     elevation = data.get("elevation_ft")
     temp_f = data.get("water_temp_f")
 
@@ -775,50 +698,23 @@ def fetch_weather_history(lat, lon, start_date, end_date, begin, end):
     return rows
 
 
-def upsert_weather(cur, lake_code, row, dry_run):
+def upsert_weather(cur,lake_code,row,dry_run):
     if dry_run:
         return 1
-
-    cur.execute(
-        """
-        INSERT INTO lake_readings (
-            timestamp,
-            lake_code,
-            air_temp_f,
-            wind_speed_mph,
-            wind_gust_mph,
-            wind_direction_deg,
-            surface_pressure_hpa,
-            cloud_cover_pct,
-            precipitation_in,
-            uv_index
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (lake_code, timestamp)
-        DO UPDATE SET
-            air_temp_f = EXCLUDED.air_temp_f,
-            wind_speed_mph = EXCLUDED.wind_speed_mph,
-            wind_gust_mph = EXCLUDED.wind_gust_mph,
-            wind_direction_deg = EXCLUDED.wind_direction_deg,
-            surface_pressure_hpa = EXCLUDED.surface_pressure_hpa,
-            cloud_cover_pct = EXCLUDED.cloud_cover_pct,
-            precipitation_in = EXCLUDED.precipitation_in,
-            uv_index = EXCLUDED.uv_index;
-        """,
-        (
-            row["timestamp"],
-            lake_code,
-            row.get("air_temp_f"),
-            row.get("wind_speed_mph"),
-            row.get("wind_gust_mph"),
-            row.get("wind_direction_deg"),
-            row.get("surface_pressure_hpa"),
-            row.get("cloud_cover_pct"),
-            row.get("precipitation_in"),
-            row.get("uv_index"),
-        ),
-    )
-
+    retrieved=datetime.now(timezone.utc)
+    for metric,value in row.items():
+        if metric=='timestamp':
+            continue
+        checked=valid_value(metric,value)
+        if checked is not None:
+            record_observation(cur,lake_code,dict(metric=metric,value=checked,observed_at=row['timestamp'],
+                source='weather_reanalysis',payload={'value':checked,'provider':'open-meteo-archive',
+                'time':row['timestamp'].isoformat(),'metric':metric,'units':'F/mph/inch/hPa as requested'}),
+                retrieved,update_state=False)
+    fields=[k for k in row if k!='timestamp']
+    cur.execute('INSERT INTO lake_readings(timestamp,lake_code,'+','.join(fields)+') VALUES ('+
+        ','.join(['%s']*(len(fields)+2))+') ON CONFLICT(lake_code,timestamp) DO NOTHING',
+        [row['timestamp'],lake_code]+[valid_value(f,row[f]) for f in fields])
     return cur.rowcount
 
 
@@ -890,6 +786,7 @@ def main():
     begin, end = resolve_window(args)
 
     conn = get_db_connection()
+    ensure_quality_schema(conn)
 
     try:
         cur = conn.cursor()
@@ -941,4 +838,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nInterrupted by user.", file=sys.stderr, flush=True)
         raise SystemExit(130)
-
