@@ -144,13 +144,28 @@ from astronomy import lunar, solar_factor, solunar_factor, solar_context
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, Response, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from collections import deque
 
+from logging_setup import setup_logging
+logger = setup_logging("web")
 app = FastAPI()
+
+@app.middleware("http")
+async def log_unexpected_api_errors(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        route = request.scope.get('route')
+        logger.error('Unhandled API error', extra={
+            'event': 'api_failed', 'method': request.method,
+            'path': route.path if route else '<unmatched>', 'status_code': 500},
+            exc_info=(type(exc), exc, exc.__traceback__))
+        return JSONResponse(status_code=500, content={'detail': 'Internal server error'})
+
 
 
 FORECAST_CACHE_TTL_SECONDS = 15 * 60
@@ -250,12 +265,9 @@ def fetch_open_meteo_forecast_cached(
             and age_seconds
                 <= FORECAST_STALE_MAX_SECONDS
         ):
-            print(
-                f"[Forecast] Open-Meteo error for "
-                f"{lake_code}; using stale cache: "
-                f"{exc}",
-                flush=True,
-            )
+            logger.warning('Forecast provider failed; serving bounded stale cache', extra={
+                'event': 'forecast_stale_cache', 'source': 'open-meteo', 'lake': lake_code,
+                'cache_age_seconds': int(age_seconds)}, exc_info=True)
 
             return (
                 entry["data"],
@@ -263,12 +275,11 @@ def fetch_open_meteo_forecast_cached(
                 int(age_seconds),
             )
 
+        logger.exception('Forecast provider failed; no acceptable cached forecast', extra={
+            'event': 'forecast_unavailable', 'source': 'open-meteo', 'lake': lake_code})
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Forecast provider error: "
-                f"{str(exc)}"
-            ),
+            detail="Forecast provider unavailable",
         )
 
 
@@ -1785,6 +1796,12 @@ def get_lake_analysis(lake_code: str, response: Response):
             row["analysis_commentary"] = tactical_strategy
 
         except Exception as _e:
+            if score is None:
+                logger.warning('Fresh essential inputs unavailable; species ranking withheld', extra={
+                    'event': 'analysis_unavailable', 'lake': lake_code})
+            else:
+                logger.exception('Tactical analysis failed; using fallback strategy', extra={
+                    'event': 'analysis_failed', 'lake': lake_code})
             fallback_species = (
                 (lake_meta or {}).get("target_species")
                 or []
@@ -1860,11 +1877,7 @@ def get_lake_analysis(lake_code: str, response: Response):
         except Exception as exc:
             conn.rollback()
 
-            print(
-                f"[Source Freshness] Error loading "
-                f"{lake_code}: {exc}",
-                flush=True
-            )
+            logger.exception('Source freshness lookup failed', extra={'event': 'source_freshness_failed', 'lake': lake_code})
 
         if row.get("timestamp"):
             source_freshness["telemetry"] = (
@@ -1918,11 +1931,7 @@ def get_lake_analysis(lake_code: str, response: Response):
         except Exception as exc:
             conn.rollback()
 
-            print(
-                f"[Lake Alerts] Error loading "
-                f"{lake_code} during analysis: {exc}",
-                flush=True
-            )
+            logger.exception('Lake alert lookup failed', extra={'event': 'lake_alerts_failed', 'lake': lake_code})
 
         row["lake_alerts"] = lake_alerts
 
