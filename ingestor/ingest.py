@@ -1,5 +1,9 @@
+from logging_setup import log_message, setup_logging
 from odwc_regs import sync_odwc_regs
 from quality import *
+from logging_setup import cycle_context
+from uuid import uuid4
+logger = setup_logging("ingestor")
 _observations = {}
 import os
 import sys
@@ -188,12 +192,11 @@ def fetch_cwms_elevation(lake_code):
                 age_hours < -0.5
                 or age_hours > CWMS_MAX_AGE_HOURS
             ):
-                print(
+                log_message(
                     f"[{lake_code}] CWMS elevation stale | "
                     f"age {age_hours:.1f} h | "
                     f"{series_name}",
-                    flush=True,
-                )
+                    flush=True, level='WARNING', event='script_message')
 
                 return None
 
@@ -208,10 +211,9 @@ def fetch_cwms_elevation(lake_code):
             return round(value, 2)
 
     except Exception as exc:
-        print(
-            f"[{lake_code}] CWMS elevation error ({series_name}): {exc}",
-            flush=True,
-        )
+        logger.warning('CWMS elevation retrieval failed', extra={
+            'event': 'provider_failed', 'lake': lake_code, 'source': 'cwms',
+            'metric': 'elevation_ft'}, exc_info=True)
 
     return None
 
@@ -278,25 +280,23 @@ def fetch_cwms_flow(lake_code, flow_type):
                 age_hours < -0.5
                 or age_hours > CWMS_MAX_AGE_HOURS
             ):
-                print(
+                log_message(
                     f"[{lake_code}] CWMS "
                     f"{flow_type} stale | "
                     f"age {age_hours:.1f} h | "
                     f"{series_name}",
-                    flush=True,
-                )
+                    flush=True, level='WARNING', event='script_message')
 
                 return None
 
             value = float(row[1])
 
             if valid_value(flow_type+'_cfs' if flow_type == 'inflow' else 'release_cfs', value) is None:
-                print(
+                log_message(
                     f"[{lake_code}] Rejecting invalid CWMS "
                     f"{flow_type} value "
                     f"{value:.1f} cfs",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
 
                 continue
 
@@ -308,11 +308,9 @@ def fetch_cwms_flow(lake_code, flow_type):
             return round(value, 1)
 
     except Exception as exc:
-        print(
-            f"[{lake_code}] CWMS {flow_type} error "
-            f"({series_name}): {exc}",
-            flush=True,
-        )
+        logger.warning('CWMS flow retrieval failed', extra={
+            'event': 'provider_failed', 'lake': lake_code, 'source': 'cwms',
+            'metric': 'inflow_cfs' if flow_type == 'inflow' else 'release_cfs'}, exc_info=True)
 
     return None
 
@@ -336,12 +334,11 @@ def fetch_cwms_levels():
         cache_age = now_utc - cached_at
 
         if cache_age < timedelta(hours=CWMS_LEVELS_CACHE_HOURS):
-            print(
+            log_message(
                 f"[CWMS] Using cached reference levels | "
                 f"age {cache_age.total_seconds() / 3600.0:.1f} h | "
                 f"{len(cached_levels)} definitions",
-                flush=True,
-            )
+                flush=True, level='INFO', event='script_message')
             return cached_levels
 
     try:
@@ -366,26 +363,23 @@ def fetch_cwms_levels():
             "levels": levels,
         }
 
-        print(
+        log_message(
             f"[CWMS] Refreshed reference-level cache | "
             f"{len(levels)} definitions",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
         return levels
 
     except Exception as exc:
-        print(
+        log_message(
             f"[CWMS] Reference-level refresh error: {exc}",
-            flush=True,
-        )
+            flush=True, level='WARNING', event='provider_failed', exc_info=True)
 
         if cached_levels:
-            print(
+            log_message(
                 f"[CWMS] Retaining stale reference-level cache | "
                 f"{len(cached_levels)} definitions",
-                flush=True,
-            )
+                flush=True, level='WARNING', event='provider_failed', exc_info=True)
             return cached_levels
 
         return []
@@ -524,10 +518,9 @@ def fetch_cwms_reference_level(lake_code, when, all_levels):
             candidates.append((effective, level))
 
     if not candidates:
-        print(
+        log_message(
             f"[{lake_code}] No applicable CWMS reference level: {level_id}",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
         return None
 
     _, definition = max(candidates, key=lambda item: item[0])
@@ -538,10 +531,9 @@ def fetch_cwms_reference_level(lake_code, when, all_levels):
         value = _evaluate_cwms_seasonal_level(definition, when)
 
     if value is None:
-        print(
+        log_message(
             f"[{lake_code}] Unable to evaluate CWMS reference level: {level_id}",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
         return None
 
     # Current SWT level definitions returned by this endpoint are meters.
@@ -552,11 +544,10 @@ def fetch_cwms_reference_level(lake_code, when, all_levels):
     elif units in ("ft", "feet"):
         value_ft = float(value)
     else:
-        print(
+        log_message(
             f"[{lake_code}] Unsupported CWMS level unit "
             f"{definition.get('level-units-id')!r}: {level_id}",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
         return None
 
     return round(value_ft, 2)
@@ -575,7 +566,8 @@ def fetch_hefner_telemetry():
             _observations[('HEFN',metric)]=observation
             result['elevation' if metric=='elevation_ft' else 'temp_f']=observation['value']
     except Exception as exc:
-        print(f'[HEFN] USGS retrieval failed: {type(exc).__name__}', flush=True)
+        logger.warning('USGS telemetry retrieval failed', extra={
+            'event': 'provider_failed', 'lake': 'HEFN', 'source': 'usgs'}, exc_info=True)
     return result
 
 def get_db_connection():
@@ -585,7 +577,7 @@ def get_db_connection():
                 host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASS, connect_timeout=5
             )
         except Exception as e:
-            print(f"[{attempt}/10] Waiting for DB... ({e})")
+            log_message(f"[{attempt}/10] Waiting for DB... ({e})", level='WARNING', event='provider_failed', exc_info=True)
             time.sleep(3)
     raise Exception("DB unreachable.")
 
@@ -677,10 +669,9 @@ def run_maintenance_checks():
                 now_utc
             )
 
-            print(
+            log_message(
                 "[ODWC Regulations] Scheduler initialized.",
-                flush=True
-            )
+                flush=True, level='INFO', event='script_message')
 
         else:
             regs_age = (
@@ -690,11 +681,10 @@ def run_maintenance_checks():
 
             if regs_age >= timedelta(days=7):
                 try:
-                    print(
+                    log_message(
                         "[ODWC Regulations] "
                         "7-day interval triggered.",
-                        flush=True
-                    )
+                        flush=True, level='INFO', event='script_message')
 
                     sync_odwc_regs(conn)
 
@@ -704,20 +694,18 @@ def run_maintenance_checks():
                         now_utc
                     )
 
-                    print(
+                    log_message(
                         "[ODWC Regulations] "
                         "Synchronization completed.",
-                        flush=True
-                    )
+                        flush=True, level='INFO', event='script_message')
 
                 except Exception as exc:
                     conn.rollback()
 
-                    print(
+                    log_message(
                         "[ODWC Regulations] "
                         f"Scheduler error: {exc}",
-                        flush=True
-                    )
+                        flush=True, level='WARNING', event='provider_failed', exc_info=True)
 
 
         # ====================================================
@@ -733,10 +721,9 @@ def run_maintenance_checks():
                 now_utc
             )
 
-            print(
+            log_message(
                 "[ODWC Species] Scheduler initialized.",
-                flush=True
-            )
+                flush=True, level='INFO', event='script_message')
 
         else:
             species_local = last_species.astimezone(central)
@@ -765,20 +752,18 @@ def run_maintenance_checks():
                         now_utc
                     )
 
-                    print(
+                    log_message(
                         "[ODWC Species] "
                         "Synchronization completed.",
-                        flush=True
-                    )
+                        flush=True, level='INFO', event='script_message')
 
                 else:
-                    print(
+                    log_message(
                         "[ODWC Species] "
                         "Sync failed with exit code "
                         f"{result.returncode}; "
                         "last_run unchanged.",
-                        flush=True
-                    )
+                        flush=True, level='ERROR', event='job_failed')
 
 
         # ====================================================
@@ -809,28 +794,25 @@ def run_maintenance_checks():
                     now_utc
                 )
 
-                print(
+                log_message(
                     "[Active Projects] "
                     "Synchronization completed.",
-                    flush=True
-                )
+                    flush=True, level='INFO', event='script_message')
 
             else:
-                print(
+                log_message(
                     "[Active Projects] "
                     "Sync failed with exit code "
                     f"{result.returncode}; "
                     "last_run unchanged.",
-                    flush=True
-                )
+                    flush=True, level='ERROR', event='job_failed')
 
     except Exception as exc:
         conn.rollback()
 
-        print(
+        log_message(
             f"[Maintenance] Scheduler error: {exc}",
-            flush=True
-        )
+            flush=True, level='WARNING', event='provider_failed', exc_info=True)
 
     finally:
         conn.close()
@@ -949,31 +931,35 @@ def fetch_weather_batch(lakes):
             if current:
                 result[lake["lake_code"]] = location_data
 
-        print(
+        log_message(
             f"[Open-Meteo] Batch weather loaded for "
             f"{len(result)}/{len(valid_lakes)} lakes",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
         return result
 
     except Exception as exc:
-        print(
-            f"[Open-Meteo] Batch weather error: {exc}",
-            flush=True,
-        )
+        logger.warning('Batch weather retrieval failed', extra={
+            'event': 'provider_failed', 'source': 'open-meteo'}, exc_info=True)
 
         return {}
 
 
 
 def run_sync():
-    conn=get_db_connection()
+    cycle_id = uuid4().hex[:12]
+    token = cycle_context.set(cycle_id)
+    started = time.monotonic()
+    committed = degraded = expected = 0
+    conn = None
+    logger.info('Telemetry cycle started', extra={'event': 'cycle_started'})
     try:
+        conn = get_db_connection()
         ensure_quality_schema(conn)
         cur=conn.cursor(cursor_factory=RealDictCursor)
         cur.execute('SELECT lake_code, latitude, longitude FROM lakes ORDER BY lake_code')
         lakes=cur.fetchall()
+        expected = len(lakes)
         now=datetime.now(timezone.utc)
         _observations.clear()
         weather=fetch_weather_batch(lakes)
@@ -1059,16 +1045,34 @@ def run_sync():
             cur.execute('INSERT INTO lake_readings (timestamp,lake_code,'+','.join(fields)+',quality) VALUES ('+
                         ','.join(['%s']*(len(fields)+3))+')',
                         [now,code]+[values.get(f) for f in fields]+[json.dumps(quality,default=str)])
-            print(f'[{code}] Sync | fresh metrics {sum(v is not None for v in values.values())}',flush=True)
-            conn.commit()  # A single lake failure cannot roll back earlier valid observations.
+            conn.commit()  # Log success only after the lake transaction commits.
+            committed += 1
+            stale = sorted(metric for metric, detail in quality.items() if not detail.get('fresh'))
+            missing = sorted(metric for metric in fields if values.get(metric) is None)
+            carried = sorted(metric for metric, detail in quality.items()
+                             if detail.get('fresh') and detail.get('carried_forward'))
+            if any(values.get(metric) is None for metric in
+                   ('pressure_delta_3h', 'wind_speed_mph', 'cloud_cover_pct')):
+                degraded += 1
+            logger.info('Lake observation committed', extra={
+                'event': 'lake_committed', 'lake': code,
+                'fresh_metrics': sum(values.get(metric) is not None for metric in fields),
+                'stale_metrics': stale, 'missing_metrics': missing, 'carried_metrics': carried})
+        logger.info('Telemetry cycle completed', extra={
+            'event': 'cycle_completed', 'duration_ms': round((time.monotonic() - started) * 1000),
+            'lakes_expected': expected, 'lakes_committed': committed, 'degraded_lakes': degraded})
+    except Exception:
+        logger.exception('Telemetry cycle failed; earlier lake commits are preserved', extra={
+            'event': 'cycle_failed', 'duration_ms': round((time.monotonic() - started) * 1000),
+            'lakes_expected': expected, 'lakes_committed': committed})
+        raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+        cycle_context.reset(token)
 
 if __name__ == "__main__":
-    print(
-        "Multi-Lake Telemetry daemon started.",
-        flush=True
-    )
+    logger.info('Telemetry daemon started; interval 900 seconds', extra={'event': 'service_started'})
 
     # One-time schema initialization.
     schema_conn = get_db_connection()
@@ -1087,11 +1091,8 @@ if __name__ == "__main__":
         try:
             run_sync()
 
-        except Exception as exc:
-            print(
-                f"[Telemetry] Sync cycle failed: {exc}",
-                flush=True
-            )
+        except Exception:
+            pass  # run_sync logs the failed cycle, then retry on the normal schedule.
 
         now_monotonic = time.monotonic()
 
@@ -1108,17 +1109,13 @@ if __name__ == "__main__":
                 run_maintenance_checks()
 
             except Exception as exc:
-                print(
+                log_message(
                     "[Maintenance] "
                     f"Scheduler failure: {exc}",
-                    flush=True
-                )
+                    flush=True, level='WARNING', event='job_failed', exc_info=True)
 
             maintenance_last = time.monotonic()
 
-        print(
-            "Waiting 15 minutes for next scheduled cycle...",
-            flush=True
-        )
+        logger.debug('Waiting 900 seconds for the next scheduled cycle', extra={'event': 'cycle_wait'})
 
         time.sleep(900)
