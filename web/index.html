@@ -254,16 +254,20 @@ body{margin:0;background:#070d19}#bite-command{border-radius:0;min-height:100vh}
 #bite-command #cc-retry{margin-left:10px;padding:5px 12px;background:var(--cc-panel);border:1px solid var(--cc-line);color:var(--cc-text);border-radius:4px}
 
 @media(min-width:2200px){
- #bite-command .cc-console{grid-template-columns:minmax(0,2.2fr) minmax(0,1.8fr);align-items:start}
- #bite-command .cc-mainlane{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1fr);grid-template-rows:auto 1fr;align-items:start}
- #bite-command .cc-mainlane>.cc-pane:first-child{grid-column:1;grid-row:1 / span 2}
+ #bite-command .cc-summaries{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #bite-command .cc-console{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto auto auto;align-items:stretch}
+ #bite-command .cc-mainlane,#bite-command .cc-sidelane{display:contents}
+ #bite-command .cc-mainlane>.cc-pane:first-child{grid-column:1;grid-row:1 / span 3}
  #bite-command .cc-mainlane>.cc-pane:nth-child(2){grid-column:2;grid-row:1}
  #bite-command .cc-mainlane>.cc-pane:nth-child(3){grid-column:2;grid-row:2}
- #bite-command .cc-sidelane{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto 1fr;align-items:start}
- #bite-command .cc-sidelane>.cc-pane:first-child{grid-column:1;grid-row:1}
- #bite-command .cc-sidelane>.cc-pane:nth-child(2){grid-column:2;grid-row:1 / span 2}
- #bite-command .cc-sidelane>.cc-pane:nth-child(3){grid-column:1;grid-row:2}
+ #bite-command .cc-sidelane>.cc-pane:first-child{grid-column:3;grid-row:1 / span 3}
+ #bite-command .cc-sidelane>.cc-pane:nth-child(2){grid-column:4;grid-row:1 / span 3}
+ #bite-command .cc-sidelane>.cc-pane:nth-child(3){grid-column:2;grid-row:3}
+ #bite-command .cc-sidelane>.cc-pane:not(:last-child){display:flex;flex-direction:column}
+ #bite-command .cc-sidelane .cc-readings{display:flex;flex-direction:column;flex:1}
+ #bite-command .cc-sidelane .cc-reading{flex:1;align-items:center}
 }
+
 </style>
 <div id="bite-command" aria-label="Bite Index command center">
   <header class="cc-header">
