@@ -1,3 +1,4 @@
+from logging_setup import log_message, setup_logging
 import argparse
 import html as html_lib
 import os
@@ -192,11 +193,10 @@ def crawl_odwc_directory(session):
                 response = session.get(url, timeout=12)
 
                 if response.status_code != 200:
-                    print(
+                    log_message(
                         f"[Directory] {region} page {page}: HTTP "
                         f"{response.status_code}",
-                        flush=True,
-                    )
+                        flush=True, level='INFO', event='script_message')
                     break
 
                 parser = DirectoryLinkParser(region, BASE_URL)
@@ -213,10 +213,9 @@ def crawl_odwc_directory(session):
                 page += 1
 
             except requests.RequestException as exc:
-                print(
+                log_message(
                     f"[Directory] Failed {region} page {page}: {exc}",
-                    flush=True,
-                )
+                    flush=True, level='WARNING', event='job_failed', exc_info=True)
                 break
 
     return catalog
@@ -336,11 +335,10 @@ def sync_species(dry_run=False, only_lake=None):
 
     try:
         data_type, udt_name = get_target_species_column_type(conn)
-        print(
+        log_message(
             "[ODWC Species] target_species type: "
             f"{data_type} / {udt_name}",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
@@ -366,19 +364,18 @@ def sync_species(dry_run=False, only_lake=None):
         lakes = cur.fetchall()
 
         if not lakes:
-            print("[ODWC Species] No matching lakes found.", flush=True)
+            log_message("[ODWC Species] No matching lakes found.", flush=True, level='INFO', event='script_message')
             cur.close()
             return 1
 
         session = requests.Session()
         session.headers.update(HEADERS)
 
-        print("[ODWC Species] Crawling ODWC lake directory...", flush=True)
+        log_message("[ODWC Species] Crawling ODWC lake directory...", flush=True, level='INFO', event='script_message')
         catalog = crawl_odwc_directory(session)
-        print(
+        log_message(
             f"[ODWC Species] Directory catalog entries: {len(catalog)}",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
         updated = 0
         unchanged = 0
@@ -394,10 +391,9 @@ def sync_species(dry_run=False, only_lake=None):
 
             if not target_url:
                 no_url += 1
-                print(
+                log_message(
                     f"[{code}] SKIP - no ODWC page matched for {name}",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
                 continue
 
             try:
@@ -408,11 +404,10 @@ def sync_species(dry_run=False, only_lake=None):
 
                 if not species:
                     no_species += 1
-                    print(
+                    log_message(
                         f"[{code}] SKIP - Fish Species of Interest not found "
                         f"or empty: {target_url}",
-                        flush=True,
-                    )
+                        flush=True, level='INFO', event='script_message')
                     continue
 
                 db_value = serialize_species_for_db(
@@ -445,18 +440,16 @@ def sync_species(dry_run=False, only_lake=None):
 
                 if current_compare == species:
                     unchanged += 1
-                    print(
+                    log_message(
                         f"[{code}] OK unchanged - {', '.join(species)}",
-                        flush=True,
-                    )
+                        flush=True, level='INFO', event='script_message')
                     continue
 
                 if dry_run:
-                    print(
+                    log_message(
                         f"[{code}] DRY RUN - would store: "
                         f"{', '.join(species)}",
-                        flush=True,
-                    )
+                        flush=True, level='INFO', event='script_message')
                 else:
                     cur.execute(
                         """
@@ -468,10 +461,9 @@ def sync_species(dry_run=False, only_lake=None):
                     )
                     conn.commit()
 
-                    print(
+                    log_message(
                         f"[{code}] UPDATED - {', '.join(species)}",
-                        flush=True,
-                    )
+                        flush=True, level='INFO', event='script_message')
 
                 updated += 1
 
@@ -481,21 +473,17 @@ def sync_species(dry_run=False, only_lake=None):
             except Exception as exc:
                 errors += 1
                 conn.rollback()
-                print(
+                log_message(
                     f"[{code}] ERROR - {name}: {exc}",
-                    flush=True,
-                )
+                    flush=True, level='WARNING', event='job_failed', exc_info=True)
 
         cur.close()
 
-        print("", flush=True)
-        print("[ODWC Species] Sync summary", flush=True)
-        print(f"  Lakes examined : {len(lakes)}", flush=True)
-        print(f"  Updated        : {updated}", flush=True)
-        print(f"  Unchanged      : {unchanged}", flush=True)
-        print(f"  No ODWC URL    : {no_url}", flush=True)
-        print(f"  No species     : {no_species}", flush=True)
-        print(f"  Errors         : {errors}", flush=True)
+        log_message('[ODWC Species] Lake species synchronization finished',
+                    level='WARNING' if errors else 'INFO', event='job_completed',
+                    job='odwc_species', lakes_expected=len(lakes), updated=updated,
+                    unchanged=unchanged, no_url=no_url, no_species=no_species,
+                    errors=errors, dry_run=dry_run)
 
         return 0 if errors == 0 else 2
 
@@ -530,4 +518,5 @@ def main():
 
 
 if __name__ == "__main__":
+    setup_logging("ingestor", filename="odwc_species.log")
     sys.exit(main())
