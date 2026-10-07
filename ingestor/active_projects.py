@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from logging_setup import log_message, setup_logging
 
 import os
 import re
@@ -488,10 +489,9 @@ def save_project(
             update_text,
         ))
 
-        print(
+        log_message(
             f"[Active Projects] ADDED ARCA: "
-            f"{project_name}"
-        )
+            f"{project_name}", level='INFO', event='script_message')
 
     else:
         changed = existing[0] != content_hash
@@ -543,19 +543,17 @@ def save_project(
         ))
 
         if changed:
-            print(
+            log_message(
                 f"[Active Projects] CHANGED ARCA: "
-                f"{project_name}"
-            )
+                f"{project_name}", level='INFO', event='script_message')
 
     conn.commit()
     cur.close()
 
 
 def sync_arcadia(conn):
-    print(
-        "[Active Projects] Checking Edmond StoryMap..."
-    )
+    log_message(
+        "[Active Projects] Checking Edmond StoryMap...", level='INFO', event='script_message')
 
     meta = fetch_json(ITEM_URL)
     data = fetch_json(DATA_URL)
@@ -638,17 +636,16 @@ def sync_arcadia(conn):
               AND project_key = %s;
         """, (key,))
 
-        print(
-            f"[Active Projects] INACTIVE ARCA: {key}"
-        )
+        log_message(
+            f"[Active Projects] INACTIVE ARCA: {key}", level='INFO', event='script_message')
 
     conn.commit()
     cur.close()
 
-    print(
+    log_message(
         f"[Active Projects] Arcadia active projects: "
-        f"{len(seen_keys)}"
-    )
+        f"{len(seen_keys)}", level='INFO', event='job_completed',
+        job='active_projects', lake='ARCA', active_projects=len(seen_keys))
 
 
 def main():
@@ -661,10 +658,10 @@ def main():
     finally:
         conn.close()
 
-    print(
-        "[Active Projects] Daily Arcadia project sync complete."
-    )
+    log_message(
+        "[Active Projects] Daily Arcadia project sync complete.", level='INFO', event='job_completed', job='active_projects')
 
 
 if __name__ == "__main__":
+    setup_logging("ingestor", filename="active_projects.log")
     main()
