@@ -488,3 +488,30 @@ OK Bite Index is under active development.
 Data availability varies by lake because not every reservoir has the same USGS, USACE, or water-quality telemetry available.
 
 The application uses available authoritative observations where possible and supplements lake analysis with weather and lake-specific logic when direct telemetry is unavailable.
+
+### Application logging
+
+Web and ingestion emit JSON Lines to stdout and persistent files under
+`${DOCKER_ROOT}/ok_lakes/logs`. UTC timestamps, severity, service, and event
+identify each record. `LOG_LEVEL` defaults to `INFO`; HTTP access logs are disabled.
+
+| Host directory | File allowlist |
+| --- | --- |
+| `ok_lakes/logs/web` | `application.log`, `application.log.[1-5]` |
+| `ok_lakes/logs/ingestor` | `application.log`, `odwc_species.log`, `active_projects.log`, `backfill.log`, and each file's `.1` through `.5` backups |
+
+Each application file rotates at 10 MiB and keeps five backups. Maintenance
+subprocesses use separate files to avoid sharing rotating handlers across
+processes. Regulations run in the ingestor process and use `application.log`.
+Run manual backfill through the ingestor container so the same log mount applies;
+avoid concurrent runs of the same maintenance script sharing a file.
+Docker's stdout copies are capped separately at three 10 MB files per container,
+including the database; database-native file logging remains unchanged.
+
+Telemetry logs include a cycle ID, committed-lake counts, duration, freshness,
+and missing/carried metrics. A degraded lake in a cycle summary means at least
+one essential bite-score input is missing (pressure trend, wind, or cloud cover);
+optional missing water telemetry is reported separately and does not alone mark
+a lake degraded. Success is logged after commit. Provider failures and unexpected
+API errors include redacted tracebacks. Logs exclude request bodies, headers,
+query strings, connection strings, and raw provider payloads.
