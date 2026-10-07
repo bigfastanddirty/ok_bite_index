@@ -1,3 +1,4 @@
+from logging_setup import log_message, setup_logging
 import os
 import re
 import time
@@ -121,7 +122,7 @@ def crawl_odwc_directory():
     return catalog
 
 def sync_odwc_regs(conn):
-    print("[ODWC Sync] Initiating lake regulations scrape...", flush=True)
+    log_message("[ODWC Sync] Initiating lake regulations scrape...", flush=True, level='INFO', event='script_message')
     cur = conn.cursor()
     cur.execute("SELECT lake_code, name FROM lakes ORDER BY name;")
     lakes = cur.fetchall()
@@ -148,15 +149,15 @@ def sync_odwc_regs(conn):
             if r.status_code == 200:
                 regs_text = extract_regs_from_html(r.text)
                 if regs_text is None:
-                    print(f'[{code}] Regulations extraction unavailable; preserving previous value',flush=True)
+                    log_message(f'[{code}] Regulations extraction unavailable; preserving previous value',flush=True, level='WARNING', event='script_message')
                     continue
                 cur.execute(
                     "UPDATE lakes SET special_regulations = %s WHERE lake_code = %s;",
                     (regs_text, code)
                 )
         except Exception as e:
-            print(f"[ODWC Sync] Error updating {code}: {e}", flush=True)
+            log_message(f"[ODWC Sync] Error updating {code}: {e}", flush=True, level='WARNING', event='job_failed', exc_info=True)
 
     conn.commit()
     cur.close()
-    print("[ODWC Sync] Finished updating lake regulations in database.", flush=True)
+    log_message("[ODWC Sync] Finished updating lake regulations in database.", flush=True, level='INFO', event='script_message')
