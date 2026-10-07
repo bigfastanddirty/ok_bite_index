@@ -929,9 +929,20 @@ def calculate_best_window(forecast_cards, window_hours=3, horizon_hours=24):
 @app.api_route("/methodology", methods=["GET", "HEAD"], response_class=HTMLResponse)
 @app.api_route("/about", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def get_methodology():
-    # Keep direct links and sidebar navigation on the same live dashboard shell.
-    # The browser selects Methodology from /methodology or /about.
-    return get_index()
+    try:
+        import os
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, "methodology.html")
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return HTMLResponse(
+            content=content,
+            headers={
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Methodology page not found")
 
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def get_index():
