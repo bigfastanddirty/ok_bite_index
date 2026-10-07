@@ -18,6 +18,7 @@ Examples:
   python -u backfill.py --levels --lake HEFN --days 7 --dry-run
   python -u backfill.py --weather --start 2026-08-01 --end 2026-08-15
 """
+from logging_setup import log_message, setup_logging
 
 import argparse
 import sys
@@ -87,12 +88,11 @@ def request_with_retry(method, url, *, label="HTTP request", **kwargs):
 
             delay = HTTP_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
 
-            print(
+            log_message(
                 f"{label} transient HTTP {response.status_code} | "
                 f"attempt {attempt}/{HTTP_RETRY_ATTEMPTS} | "
                 f"retrying in {delay:.1f}s",
-                flush=True,
-            )
+                flush=True, level='INFO', event='script_message')
 
             time.sleep(delay)
 
@@ -107,12 +107,11 @@ def request_with_retry(method, url, *, label="HTTP request", **kwargs):
 
             delay = HTTP_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
 
-            print(
+            log_message(
                 f"{label} transient request error: {exc} | "
                 f"attempt {attempt}/{HTTP_RETRY_ATTEMPTS} | "
                 f"retrying in {delay:.1f}s",
-                flush=True,
-            )
+                flush=True, level='WARNING', event='job_failed', exc_info=True)
 
             time.sleep(delay)
 
@@ -280,20 +279,18 @@ def fetch_cwms_series(series_name, unit, begin, end, lake_code, label):
         rows = cwms_parse_values(response.json())
         observations.update(rows)
 
-        print(
+        log_message(
             f"[{lake_code}] {label} window {window_number}: "
             f"{window_begin.isoformat()} -> {window_end.isoformat()} | "
             f"{len(rows)} observations",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
         window_begin = window_end
         time.sleep(0.15)
 
-    print(
+    log_message(
         f"[{lake_code}] {label} returned {len(observations)} unique observations",
-        flush=True,
-    )
+        flush=True, level='INFO', event='script_message')
 
     return observations
 
@@ -380,9 +377,9 @@ def upsert_hefner(cur, ts, data, dry_run):
 
 
 def run_levels(conn, selected_lakes, begin, end, dry_run):
-    print("\n" + "=" * 70)
-    print("LEVEL BACKFILL")
-    print("=" * 70)
+    log_message("\n" + "=" * 70, level='INFO', event='script_message')
+    log_message("LEVEL BACKFILL", level='INFO', event='script_message')
+    log_message("=" * 70, level='INFO', event='script_message')
 
     cur = conn.cursor()
     total_written = 0
@@ -395,12 +392,11 @@ def run_levels(conn, selected_lakes, begin, end, dry_run):
 
     cwms_levels = []
     if cwms_selected:
-        print("[CWMS] Downloading reference-level definitions...", flush=True)
+        log_message("[CWMS] Downloading reference-level definitions...", flush=True, level='INFO', event='script_message')
         cwms_levels = fetch_cwms_levels()
-        print(
+        log_message(
             f"[CWMS] Loaded {len(cwms_levels)} reference-level definitions",
-            flush=True,
-        )
+            flush=True, level='INFO', event='script_message')
 
     try:
         for lake_code in cwms_selected:
@@ -448,15 +444,14 @@ def run_levels(conn, selected_lakes, begin, end, dry_run):
                 total_written += written
                 total_reference_skipped += skipped
 
-                print(
+                log_message(
                     f"[{lake_code}] rows={'would_write' if dry_run else 'written'}={written} "
                     f"reference_skipped={skipped}",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
 
             except Exception as exc:
                 conn.rollback()
-                print(f"[{lake_code}] LEVEL BACKFILL ERROR: {exc}", flush=True)
+                log_message(f"[{lake_code}] LEVEL BACKFILL ERROR: {exc}", flush=True, level='WARNING', event='job_failed', exc_info=True)
 
             time.sleep(0.20)
 
@@ -480,24 +475,22 @@ def run_levels(conn, selected_lakes, begin, end, dry_run):
                     if data.get("water_temp_f") is not None
                 )
 
-                print(
+                log_message(
                     f"[HEFN] rows={'would_write' if dry_run else 'written'}={written} "
                     f"measured_temp_timestamps={measured_temp_rows}",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
 
             except Exception as exc:
                 conn.rollback()
-                print(f"[HEFN] LEVEL BACKFILL ERROR: {exc}", flush=True)
+                log_message(f"[HEFN] LEVEL BACKFILL ERROR: {exc}", flush=True, level='WARNING', event='job_failed', exc_info=True)
 
     finally:
         cur.close()
 
-    print(
+    log_message(
         f"LEVELS COMPLETE | {'would_write' if dry_run else 'written'}={total_written} "
         f"reference_skipped={total_reference_skipped}",
-        flush=True,
-    )
+        flush=True, level='INFO', event='script_message')
 
 
 def flow_is_reasonable(value):
@@ -531,9 +524,9 @@ def upsert_flow(cur, lake_code, ts, column, value, dry_run):
 
 
 def run_flows(conn, selected_lakes, begin, end, dry_run):
-    print("\n" + "=" * 70)
-    print("FLOW BACKFILL")
-    print("=" * 70)
+    log_message("\n" + "=" * 70, level='INFO', event='script_message')
+    log_message("FLOW BACKFILL", level='INFO', event='script_message')
+    log_message("=" * 70, level='INFO', event='script_message')
 
     cur = conn.cursor()
     total_inflow = 0
@@ -573,11 +566,10 @@ def run_flows(conn, selected_lakes, begin, end, dry_run):
                 for ts, value in sorted(inflow.items()):
                     if not flow_is_reasonable(value):
                         skipped += 1
-                        print(
+                        log_message(
                             f"[{lake_code}] SKIP implausible inflow "
                             f"{value:.1f} cfs at {ts.isoformat()}",
-                            flush=True,
-                        )
+                            flush=True, level='INFO', event='script_message')
                         continue
 
                     inflow_written += upsert_flow(
@@ -592,11 +584,10 @@ def run_flows(conn, selected_lakes, begin, end, dry_run):
                 for ts, value in sorted(release.items()):
                     if not flow_is_reasonable(value):
                         skipped += 1
-                        print(
+                        log_message(
                             f"[{lake_code}] SKIP implausible release "
                             f"{value:.1f} cfs at {ts.isoformat()}",
-                            flush=True,
-                        )
+                            flush=True, level='INFO', event='script_message')
                         continue
 
                     release_written += upsert_flow(
@@ -617,28 +608,26 @@ def run_flows(conn, selected_lakes, begin, end, dry_run):
                 total_release += release_written
                 total_skipped += skipped
 
-                print(
+                log_message(
                     f"[{lake_code}] inflow_{'would_write' if dry_run else 'written'}={inflow_written} "
                     f"release_{'would_write' if dry_run else 'written'}={release_written} "
                     f"implausible_skipped={skipped}",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
 
             except Exception as exc:
                 conn.rollback()
-                print(f"[{lake_code}] FLOW BACKFILL ERROR: {exc}", flush=True)
+                log_message(f"[{lake_code}] FLOW BACKFILL ERROR: {exc}", flush=True, level='WARNING', event='job_failed', exc_info=True)
 
             time.sleep(0.20)
 
     finally:
         cur.close()
 
-    print(
+    log_message(
         f"FLOWS COMPLETE | inflow_{'would_write' if dry_run else 'written'}={total_inflow} "
         f"release_{'would_write' if dry_run else 'written'}={total_release} "
         f"implausible_skipped={total_skipped}",
-        flush=True,
-    )
+        flush=True, level='INFO', event='script_message')
 
 
 def fetch_weather_history(lat, lon, start_date, end_date, begin, end):
@@ -719,9 +708,9 @@ def upsert_weather(cur,lake_code,row,dry_run):
 
 
 def run_weather(conn, selected_lakes, db_lakes, begin, end, dry_run):
-    print("\n" + "=" * 70)
-    print("WEATHER BACKFILL")
-    print("=" * 70)
+    log_message("\n" + "=" * 70, level='INFO', event='script_message')
+    log_message("WEATHER BACKFILL", level='INFO', event='script_message')
+    log_message("=" * 70, level='INFO', event='script_message')
 
     start_date = begin.date().isoformat()
     end_date = end.date().isoformat()
@@ -737,7 +726,7 @@ def run_weather(conn, selected_lakes, db_lakes, begin, end, dry_run):
                 continue
 
             if lat is None or lon is None:
-                print(f"[{lake_code}] Missing coordinates; skipping", flush=True)
+                log_message(f"[{lake_code}] Missing coordinates; skipping", flush=True, level='WARNING', event='script_message')
                 continue
 
             try:
@@ -761,24 +750,22 @@ def run_weather(conn, selected_lakes, db_lakes, begin, end, dry_run):
 
                 total_written += written
 
-                print(
+                log_message(
                     f"[{lake_code}] weather_{'would_write' if dry_run else 'written'}={written}",
-                    flush=True,
-                )
+                    flush=True, level='INFO', event='script_message')
 
             except Exception as exc:
                 conn.rollback()
-                print(f"[{lake_code}] WEATHER BACKFILL ERROR: {exc}", flush=True)
+                log_message(f"[{lake_code}] WEATHER BACKFILL ERROR: {exc}", flush=True, level='WARNING', event='job_failed', exc_info=True)
 
             time.sleep(0.15)
 
     finally:
         cur.close()
 
-    print(
+    log_message(
         f"WEATHER COMPLETE | {'would_write' if dry_run else 'written'}={total_written}",
-        flush=True,
-    )
+        flush=True, level='INFO', event='script_message')
 
 
 def main():
@@ -802,13 +789,13 @@ def main():
 
         selected_lakes = requested_lakes(args, db_lakes)
 
-        print("=" * 70)
-        print("OK BITE INDEX UNIFIED HISTORICAL BACKFILL")
-        print(f"Begin:   {begin.isoformat()}")
-        print(f"End:     {end.isoformat()}")
-        print(f"Lakes:   {', '.join(sorted(selected_lakes))}")
-        print(f"Dry run: {'YES' if args.dry_run else 'NO'}")
-        print("=" * 70)
+        log_message("=" * 70, level='INFO', event='script_message')
+        log_message("OK BITE INDEX UNIFIED HISTORICAL BACKFILL", level='INFO', event='script_message')
+        log_message(f"Begin:   {begin.isoformat()}", level='INFO', event='script_message')
+        log_message(f"End:     {end.isoformat()}", level='INFO', event='script_message')
+        log_message(f"Lakes:   {', '.join(sorted(selected_lakes))}", level='INFO', event='script_message')
+        log_message(f"Dry run: {'YES' if args.dry_run else 'NO'}", level='INFO', event='script_message')
+        log_message("=" * 70, level='INFO', event='script_message')
 
         if args.all or args.levels:
             run_levels(conn, selected_lakes, begin, end, args.dry_run)
@@ -829,12 +816,14 @@ def main():
     finally:
         conn.close()
 
-    print("\nBackfill finished.", flush=True)
+    log_message('Backfill run finished; see per-lake errors and written counts above',
+                level='INFO', event='job_finished', job='backfill', dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
+    setup_logging("ingestor", filename="backfill.log")
     try:
         main()
     except KeyboardInterrupt:
-        print("\nInterrupted by user.", file=sys.stderr, flush=True)
+        log_message("\nInterrupted by user.", file=sys.stderr, flush=True, level='WARNING', event='job_failed', exc_info=True)
         raise SystemExit(130)
